@@ -9,6 +9,7 @@ accounts:
     export_directory: "/chemin/vers/export/Gmail"
     quote_depth: 1
     skip_existing: true
+    collect_contacts: true
     ignored_folders:
       - "[Gmail]/Spam"
       - "[Gmail]/Trash"
@@ -21,6 +22,7 @@ accounts:
     export_directory: "/chemin/vers/export/MonCompte"
     quote_depth: 1
     skip_existing: true
+    collect_contacts: true
     ignored_folders:
       - "Spam"
       - "Trash"

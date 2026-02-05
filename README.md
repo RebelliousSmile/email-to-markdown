@@ -91,6 +91,16 @@ MONAUTRECOMPTE_PASSWORD="votre_autre_mot_de_passe"
 python export_emails.py
 ```
 
+**Exporter un compte spécifique** (utile pour les tests) :
+```bash
+EXPORT_SPECIFIC_ACCOUNTS="LaContreVoie" python export_emails.py
+```
+
+**Exporter plusieurs comptes spécifiques** :
+```bash
+EXPORT_SPECIFIC_ACCOUNTS="Gmail,LaContreVoie" python export_emails.py
+```
+
 ## Configuration avancée
 
 ### Options disponibles
@@ -99,6 +109,71 @@ python export_emails.py
 - **`ignored_folders`** : Liste des dossiers à ignorer pendant l'export
 - **`quote_depth`** : Profondeur maximale des citations à conserver (par défaut: 1)
 - **`skip_existing`** : Ignore les emails déjà exportés (activé par défaut)
+- **`collect_contacts`** : Génère un fichier de contacts CSV (désactivé par défaut)
+
+### Options d'exécution
+
+- **`EXPORT_SPECIFIC_ACCOUNTS`** : Variable d'environnement pour exporter uniquement certains comptes (utile pour les tests)
+- **`DEBUG_IMAP`** : Active le mode debug pour voir les détails de la connexion IMAP (`true`/`false`)
+
+### Export sélectif pour les tests
+
+Pour tester l'export sur un seul compte sans traiter tous vos comptes email :
+
+**Cas d'usage** :
+- Tester un nouveau compte avant de l'ajouter à l'export complet
+- Déboguer un problème spécifique à un compte
+- Économiser du temps lors des tests
+
+**Fonctionnement** :
+- La comparaison des noms de comptes est insensible à la casse
+- Vous pouvez utiliser majuscules ou minuscules indifféremment
+- Plusieurs comptes peuvent être spécifiés, séparés par des virgules
+
+### Mode debug pour le dépannage
+
+Si vous rencontrez des problèmes de connexion ou d'accès aux dossiers, activez le mode debug :
+
+```bash
+DEBUG_IMAP=true EXPORT_SPECIFIC_ACCOUNTS="LaContreVoie" python3 export_emails.py
+```
+
+**Ce que vous verrez** :
+- Liste complète des dossiers retournés par le serveur IMAP
+- Détails de la connexion et de l'authentification
+- Informations sur les dossiers traités ou ignorés
+
+**Quand l'utiliser** :
+- Si aucun dossier n'est trouvé
+- Pour vérifier que le serveur IMAP retourne bien vos dossiers
+- Pour diagnostiquer des problèmes d'accès spécifiques
+
+**Exemple** :
+```bash
+# Exporter uniquement LaContreVoie (insensible à la casse)
+EXPORT_SPECIFIC_ACCOUNTS="LaContreVoie" python export_emails.py
+EXPORT_SPECIFIC_ACCOUNTS="lacontrevoie" python export_emails.py  # fonctionne aussi
+
+# Exporter Gmail et LaContreVoie uniquement
+EXPORT_SPECIFIC_ACCOUNTS="Gmail,LaContreVoie" python export_emails.py
+```
+
+**Affichage** :
+```bash
+🎯 Selected account for export: LaContreVoie
+📥 Skipping account: Gmail
+📧 Processing account: LaContreVoie → /chemin/vers/export/LaContreVoie
+✅ Export completed for LaContreVoie
+```
+
+### Gestion des dossiers avec espaces
+
+Le script gère automatiquement les dossiers dont les noms contiennent des espaces ou des caractères spéciaux comme :
+- `"INBOX/suivi clients"`
+- `"Projets/Client A - Contrat"`
+- `"Archives/2023 - Comptes"`
+
+**Pas de configuration supplémentaire nécessaire** - le script s'occupe de tout automatiquement.
 
 ### Exemple de configuration avancée
 
@@ -112,6 +187,7 @@ accounts:
     delete_after_export: false
     quote_depth: 1
     skip_existing: true
+    collect_contacts: true
     ignored_folders:
       - "[Gmail]/Spam"
       - "[Gmail]/Trash"
@@ -141,28 +217,52 @@ export_directory/
 
 ### Gestion des citations
 
-Le script permet de contrôler la profondeur des citations dans les emails exportés pour éviter le contenu redondant. Par exemple, avec `quote_depth: 3`, seules les citations jusqu'au 3ème niveau seront conservées :
+Cette option permet de limiter la quantité de texte cité dans les réponses pour garder seulement l'essentiel.
+
+**Exemple** : Avec `quote_depth: 1`, seules les citations directes sont conservées :
 
 ```
-> Premier niveau de citation (conservé)
->> Deuxième niveau de citation (conservé)
->>> Troisième niveau de citation (conservé)
->>>> Quatrième niveau de citation (supprimé)
+> Réponse à votre message (conservé)
+>> Réponse à la réponse (supprimé)
 ```
+
+**Pourquoi c'est utile** : Évite d'avoir des emails très longs avec beaucoup de contenu répété.
+
+### Collection des contacts
+
+Le script peut générer automatiquement un fichier de contacts à partir de vos emails, prêt à être importé dans votre client email préféré (Thunderbird, Gmail, Outlook, etc.).
+
+**Pour l'activer** : Ajoutez simplement `collect_contacts: true` dans votre configuration.
+
+**Ce que vous obtenez** :
+- Un fichier CSV nommé `contacts_<votre_compte>_<date>.csv`
+- Tous vos correspondants organisés avec leur nom, email et type
+- Format standard compatible avec la plupart des logiciels
+
+**Exemple** :
+```bash
+📇 Generated contacts file: contacts_Gmail_2023-11-15.csv
+```
+
+**Utilisation** : Importez simplement ce fichier dans votre carnet d'adresses pour avoir tous vos contacts organisés automatiquement.
 
 ### Éviter les doublons
 
-Le script détecte automatiquement les emails déjà exportés pour éviter les doublons. Cette fonctionnalité est activée par défaut avec l'option `skip_existing: true`.
+Par défaut, le script ignore automatiquement les emails déjà exportés pour éviter les doublons.
 
-**Fonctionnement** :
-- Le script compare les emails à exporter avec les fichiers existants
-- Un email est considéré comme déjà exporté s'il existe un fichier avec le même nom de base (date + expéditeur + destinataire)
-- Les emails déjà exportés sont ignorés et un message est affiché : `⏭️  Email already exported, skipping: ...`
+**Comment ça marche** :
+- Le script vérifie si un email a déjà été sauvegardé
+- Si c'est le cas, il le saute et continue avec les autres
+- À la fin, vous voyez un résumé clair par dossier
 
-**Avantages** :
-- Évite la duplication des fichiers
-- Économise du temps et des ressources
-- Permet des exécutions multiples sans risque de doublons
+**Ce que vous voyez** :
+- `✅ INBOX: 15 emails exported` (tous les emails étaient nouveaux)
+- `📊 Sent: 5 exported, 10 skipped` (10 emails étaient déjà sauvegardés)
+
+**Pourquoi c'est utile** :
+- Pas de fichiers en double
+- Gain de temps lors des exports répétés
+- Vous pouvez relancer le script sans risque
 
 **Désactiver la détection** :
 ```yaml
@@ -183,7 +283,7 @@ Cette organisation permet de :
 
 ### Format des fichiers Markdown
 
-Chaque email est exporté avec un en-tête YAML :
+Chaque email est exporté avec un en-tête YAML contenant les informations essentielles :
 
 ```markdown
 ---
@@ -194,11 +294,22 @@ subject: Sujet de l'email
 tags:
   - INBOX/fonctionnement/opale
 attachments:
-  - attachments/fonctionnement/opale/email_2023-01-01_EXP_to_DES_abc123_fichier.pdf
+  - attachments/fonctionnement/opale/email_2023-01-01_EXP_to_DES_fichier.pdf
 ---
 
 Corps de l'email en texte brut...
 ```
+
+### Organisation des fichiers
+
+**Noms des fichiers** : Chaque email est sauvegardé avec un nom clair comme `email_2023-11-15_JDO_to_MSM.md` où :
+- `2023-11-15` = date de l'email
+- `JDO` = initiales de l'expéditeur (John Doe)
+- `MSM` = initiales du destinataire (Marie Martin)
+
+**Gestion automatique des doublons** : Si plusieurs emails ont les mêmes caractéristiques, le script ajoute automatiquement un numéro (`_2`, `_3`, etc.) pour éviter les conflits.
+
+**Pièces jointes** : Les fichiers attachés sont organisés dans des dossiers `attachments/` qui suivent la même structure que vos dossiers email.
 
 ## Dépannage
 
@@ -218,6 +329,34 @@ Corps de l'email en texte brut...
 ```
 
 **Solution** : Mettez à jour le script avec la dernière version qui filtre les noms de dossiers invalides.
+
+**Erreur de sélection de dossier**
+```
+❌ Error for Gmail: SELECT command error: BAD [b'Could not parse command']
+```
+
+**Solution** : Cette erreur se produit généralement avec des dossiers contenant des espaces ou caractères spéciaux. Le script devrait maintenant gérer cela automatiquement. Si le problème persiste :
+1. Vérifiez que vous utilisez la dernière version du script
+2. Essayez d'ajouter le dossier problématique à la liste `ignored_folders` temporairement
+3. Contactez le support si le problème continue
+
+**Problème de connexion silencieux**
+```
+📧 Processing account: LaContreVoie → /chemin/vers/export/LaContreVoie
+✅ Export completed for LaContreVoie
+```
+
+**Solution** : Si le script indique que l'export est terminé mais qu'aucun dossier n'a été traité :
+1. Vérifiez que le mot de passe est correct dans votre fichier `.env`
+2. Assurez-vous que le serveur IMAP est accessible (`mail.42l.fr:993`)
+3. Vérifiez que l'IMAP est activé sur votre compte
+4. Essayez de vous connecter manuellement avec un client email pour tester
+
+**Commande pour tester la connexion** :
+```bash
+# Tester la connexion IMAP manuellement
+openssl s_client -connect mail.42l.fr:993 -crlf
+```
 
 ### Journalisation
 
