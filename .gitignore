@@ -1,0 +1,52 @@
+# Fichiers sensibles et spécifiques à l'environnement
+.env
+.env.*
+*.env
+
+# Fichiers Python compilés
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Fichiers de configuration locaux
+*.local
+
+# Fichiers de dépendances
+*.egg-info/
+
+# Fichiers de cache
+.cache/
+
+# Fichiers de logs
+*.log
+
+# Fichiers de base de données locales
+*.sqlite
+*.db
+
+# Fichiers de configuration IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Fichiers de build
+build/
+dist/
+
+# Fichiers de documentation générés
+*.pdf
+*.docx
+
+# Dossiers de dépendances
+env/
+venv/
+
+# Fichiers de configuration spécifiques
+accounts.yaml
+
+# Fichiers de cache macOS
+.DS_Store
+
+# Fichiers de cache Windows
+Thumbs.db

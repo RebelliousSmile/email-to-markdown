@@ -1,0 +1,22 @@
+# Fichier d'exemple de configuration des comptes email
+# Copiez ce fichier en accounts.yaml et modifiez-le avec vos informations
+
+accounts:
+  - name: "Gmail"
+    server: "imap.gmail.com"
+    port: 993
+    username: "votre.email@gmail.com"
+    export_directory: "/chemin/vers/export/Gmail"
+    ignored_folders:
+      - "[Gmail]/Spam"
+      - "[Gmail]/Trash"
+      - "[Gmail]/Drafts"
+
+  - name: "MonCompte"
+    server: "imap.votredomaine.com"
+    port: 993
+    username: "votre@email.com"
+    export_directory: "/chemin/vers/export/MonCompte"
+    ignored_folders:
+      - "Spam"
+      - "Trash"
