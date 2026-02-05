@@ -4,6 +4,7 @@ import os
 import re
 import yaml
 import hashlib
+import fnmatch
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -20,9 +21,75 @@ for account in config['accounts']:
     password_var = f"{account['name'].upper()}_APPLICATION_PASSWORD"
     account['password'] = os.getenv(password_var) or os.getenv(f"{account['name'].upper()}_PASSWORD")
 
-def export_to_markdown(raw_email, export_directory, num, tags):
+def limit_quote_depth(text, max_depth):
+    """Limit the depth of quoted messages to reduce redundancy."""
+    lines = text.split('\n')
+    quote_stack = []
+    result_lines = []
+    
+    for line in lines:
+        # Count leading '>' characters to determine quote depth
+        quote_level = 0
+        while quote_level < len(line) and line[quote_level] == '>':
+            quote_level += 1
+        
+        # If quote level exceeds max depth, skip the line
+        if quote_level > max_depth:
+            continue
+            
+        result_lines.append(line)
+    
+    return '\n'.join(result_lines)
+
+def email_already_exported(email_message, export_directory):
+    """Check if an email has already been exported by looking for existing files."""
+    # Generate the expected filename pattern
+    date_obj = email.utils.parsedate_to_datetime(email_message["Date"])
+    if not date_obj:
+        return False
+    
+    date_str = date_obj.strftime("%Y-%m-%d")
+    
+    def get_short_name(email_str):
+        # Same logic as in export_to_markdown
+        clean = email_str.replace("<", "").replace(">", "")
+        if "@" in clean:
+            name_part = clean.split("@")[0]
+        else:
+            name_part = clean
+        words = name_part.split()
+        if len(words) == 1:
+            short_name = words[0][:3].upper()
+        else:
+            short_name = ''.join(word[0].upper() for word in words[:3])
+        short_name = re.sub(r'[^A-Z]', '', short_name)
+        return short_name if short_name else "UNK"
+    
+    sender_short = get_short_name(email_message["From"])
+    recipient_short = get_short_name(email_message["To"])
+    
+    # Look for existing files with this pattern
+    search_pattern = f"email_{date_str}_{sender_short}_to_{recipient_short}*.md"
+    existing_files = []
+    
+    if os.path.exists(export_directory):
+        for filename in os.listdir(export_directory):
+            if fnmatch.fnmatch(filename, search_pattern):
+                existing_files.append(filename)
+    
+    return len(existing_files) > 0
+
+def export_to_markdown(raw_email, export_directory, base_export_directory, num, tags, quote_depth=1, account=None):
     """Export an email to Markdown with frontmatter and handle attachments."""
     email_message = email.message_from_bytes(raw_email)
+
+    # Check if email has already been exported (if skip_existing is enabled)
+    if account is None:
+        account = {}
+    skip_existing = account.get('skip_existing', True)
+    if skip_existing and email_already_exported(email_message, export_directory):
+        print(f"⏭️  Email already exported, skipping: {email_message['Subject'][:50]}...")
+        return False
 
     frontmatter = {
         "from": email_message["From"],
@@ -37,36 +104,37 @@ def export_to_markdown(raw_email, export_directory, num, tags):
     date_obj = email.utils.parsedate_to_datetime(email_message["Date"])
     date_str = date_obj.strftime("%Y-%m-%d")
     
-    # Extract clean sender and recipient names (remove email addresses and special chars)
-    def clean_email_address(email_str):
+    # Extract initials or short names for sender and recipient
+    def get_short_name(email_str):
         # Remove <> and everything inside
         clean = email_str.replace("<", "").replace(">", "")
-        # Extract name part before @ if present
+        
+        # Extract name part (before @ if email, or full name)
         if "@" in clean:
-            clean = clean.split("@")[0]
-        # Replace special characters and spaces
-        clean = clean.replace(" ", "_").replace("@", "_at_").replace(",", "_").replace("=", "").replace("?", "").replace("!", "")
-        clean = clean.replace("&", "and").replace("#", "").replace("$", "").replace("%", "")
-        # Remove any remaining non-alphanumeric characters
-        import re
-        clean = re.sub(r'[^\w\-]', '', clean)
-        # Limit to reasonable length
-        return clean[:50]
+            name_part = clean.split("@")[0]
+        else:
+            name_part = clean
+        
+        # Get initials or short name
+        words = name_part.split()
+        if len(words) == 1:
+            # Single word: use first 3 letters
+            short_name = words[0][:3].upper()
+        else:
+            # Multiple words: use first letter of each word (max 3 words)
+            short_name = ''.join(word[0].upper() for word in words[:3])
+        
+        # Clean up any remaining special characters
+        short_name = re.sub(r'[^A-Z]', '', short_name)
+        
+        # Fallback to "UNK" if empty
+        return short_name if short_name else "UNK"
     
-    sender_clean = clean_email_address(email_message["From"])
-    recipient_clean = clean_email_address(email_message["To"])
+    sender_short = get_short_name(email_message["From"])
+    recipient_short = get_short_name(email_message["To"])
     
-    # Create filename: email_YYYY-MM-DD_from-sender_to-recipient.md
-    filename = f"email_{date_str}_from-{sender_clean}_to-{recipient_clean}.md"
-    
-    # Limit total filename length to avoid filesystem issues
-    max_length = 150  # Reduced from 200 to be safer
-    if len(filename) > max_length:
-        # Keep date and truncate sender/recipient parts
-        available_length = max_length - len("email_YYYY-MM-DD_from-_to-_.md")
-        sender_part = sender_clean[:available_length//2]
-        recipient_part = recipient_clean[:available_length//2]
-        filename = f"email_{date_str}_from-{sender_part}_to-{recipient_part}.md"
+    # Create filename: email_YYYY-MM-DD_EFR_to_CAC.md
+    filename = f"email_{date_str}_{sender_short}_to_{recipient_short}.md"
 
     body = ""
     if email_message.is_multipart():
@@ -79,7 +147,17 @@ def export_to_markdown(raw_email, export_directory, num, tags):
     else:
         body = email_message.get_payload(decode=True).decode(errors="ignore")
 
-    attachments_dir = os.path.join(export_directory, "attachments")
+    # Process quote depth to reduce redundant content
+    if quote_depth > 0:
+        body = limit_quote_depth(body, quote_depth)
+
+    # Create attachments directory in the same relative path as the email
+    # Get the relative path from the base export directory to current export directory
+    relative_path = os.path.relpath(export_directory, base_export_directory)
+    
+    # Create attachments directory structure
+    attachments_base_dir = os.path.join(base_export_directory, "attachments")
+    attachments_dir = os.path.join(attachments_base_dir, relative_path)
     os.makedirs(attachments_dir, exist_ok=True)
 
     # Use a base name for attachments (without .md extension)
@@ -96,13 +174,23 @@ def export_to_markdown(raw_email, export_directory, num, tags):
             filepath = os.path.join(attachments_dir, f"{base_filename}_{filename_hash}_{attachment_filename}")
             with open(filepath, 'wb') as f:
                 f.write(part.get_payload(decode=True))
-            frontmatter["attachments"].append(f"attachments/{base_filename}_{filename_hash}_{attachment_filename}")
+            # Calculate relative path from base export directory to attachments directory
+            relative_attachments_path = os.path.relpath(attachments_dir, base_export_directory)
+            frontmatter["attachments"].append(f"{relative_attachments_path}/{base_filename}_{filename_hash}_{attachment_filename}")
 
+    # Normalize line breaks to max 2 consecutive newlines
+    def normalize_line_breaks(text):
+        # Replace any sequence of 3 or more newlines with exactly 2 newlines
+        return re.sub(r'\n{3,}', '\n\n', text)
+    
+    # Apply normalization to the email body
+    normalized_body = normalize_line_breaks(body)
+    
     with open(f"{export_directory}/{filename}", "w", encoding="utf-8") as f:
         f.write("---\n")
         yaml.dump(frontmatter, f, allow_unicode=True, sort_keys=False)
         f.write("---\n\n")
-        f.write(body)
+        f.write(normalized_body)
 
 def export_folder(mail, imap_folder, base_export_directory, delete_after_export=False):
     """Export all emails from an IMAP folder (including nested folders)."""
@@ -123,7 +211,8 @@ def export_folder(mail, imap_folder, base_export_directory, delete_after_export=
         status, data = mail.fetch(num, "(RFC822)")
         if status == "OK":
             raw_email = data[0][1]
-            export_to_markdown(raw_email, export_directory, num, [imap_folder])
+            quote_depth = account.get('quote_depth', 3)
+            export_to_markdown(raw_email, export_directory, account['export_directory'], num, [imap_folder], quote_depth, account)
             if delete_after_export:
                 mail.store(num, '+FLAGS', '\\Deleted')
 

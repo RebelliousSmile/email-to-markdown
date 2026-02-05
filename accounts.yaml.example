@@ -7,6 +7,8 @@ accounts:
     port: 993
     username: "votre.email@gmail.com"
     export_directory: "/chemin/vers/export/Gmail"
+    quote_depth: 1
+    skip_existing: true
     ignored_folders:
       - "[Gmail]/Spam"
       - "[Gmail]/Trash"
@@ -17,6 +19,8 @@ accounts:
     port: 993
     username: "votre@email.com"
     export_directory: "/chemin/vers/export/MonCompte"
+    quote_depth: 1
+    skip_existing: true
     ignored_folders:
       - "Spam"
       - "Trash"
