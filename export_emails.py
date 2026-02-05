@@ -488,18 +488,40 @@ def export_folder(mail, imap_folder, base_export_directory, account, contacts_co
             except:
                 pass
         
-        # Try each strategy until one works
+        # Strategy 0: First try the EXACT name from the server (most likely to work)
         selected_successfully = False
-        for strategy in strategies:
-            try:
-                status, messages = mail.select(strategy)
-                if status == "OK":
-                    if len(strategies) > 1:
-                        print(f"  Selected '{imap_folder}' using strategy: {strategy}")
-                    selected_successfully = True
-                    break
-            except:
-                continue
+        try:
+            status, messages = mail.select(imap_folder)
+            if status == "OK":
+                if debug_mode:
+                    print(f"  Selected using exact server name: '{imap_folder}'")
+                selected_successfully = True
+            else:
+                # If exact name doesn't work, try our decoded strategies
+                for strategy in strategies:
+                    try:
+                        status, messages = mail.select(strategy)
+                        if status == "OK":
+                            if debug_mode:
+                                print(f"  Selected '{imap_folder}' using strategy: {strategy}")
+                            selected_successfully = True
+                            break
+                    except:
+                        continue
+        except Exception as e:
+            if debug_mode:
+                print(f"  Exception selecting folder: {e}")
+            # If exact name fails with exception, try our decoded strategies
+            for strategy in strategies:
+                try:
+                    status, messages = mail.select(strategy)
+                    if status == "OK":
+                        if debug_mode:
+                            print(f"  Selected '{imap_folder}' using strategy: {strategy}")
+                        selected_successfully = True
+                        break
+                except:
+                    continue
         
         if not selected_successfully:
             print(f" Unable to select {imap_folder}")
