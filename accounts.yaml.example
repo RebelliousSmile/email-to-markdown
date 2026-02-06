@@ -10,6 +10,7 @@ accounts:
     quote_depth: 1
     skip_existing: true
     collect_contacts: true
+    skip_signature_images: true  # Ignore signature images and logos
     ignored_folders:
       - "[Gmail]/Spam"
       - "[Gmail]/Trash"
@@ -23,6 +24,7 @@ accounts:
     quote_depth: 1
     skip_existing: true
     collect_contacts: true
+    skip_signature_images: true  # Ignore signature images and logos
     ignored_folders:
       - "Spam"
       - "Trash"

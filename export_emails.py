@@ -192,7 +192,50 @@ def generate_contacts_file(contacts_data, base_export_directory, account_name):
     
     return filepath
 
-def export_to_markdown(raw_email, export_directory, base_export_directory, num, tags, quote_depth=1, account=None, contacts_collector=None):
+def is_signature_image(attachment_filename, content_type, payload_size, content_disposition):
+    """Check if an attachment is likely a signature image."""
+    # Common signature image patterns
+    signature_patterns = [
+        'signature', 'logo', 'banner', 'footer', 'header',
+        'company', 'corporate', 'brand', 'societe', 'entreprise'
+    ]
+    
+    filename_lower = attachment_filename.lower() if attachment_filename else ''
+    
+    # Check 1: Common signature filenames (only if small)
+    if any(pattern in filename_lower for pattern in signature_patterns):
+        # Different size limits for different types
+        if 'signature' in filename_lower:
+            size_limit = 50 * 1024  # Signature images are typically small (< 50KB)
+        elif 'logo' in filename_lower:
+            size_limit = 60 * 1024  # Logos can be a bit larger (< 60KB)
+        else:
+            size_limit = 80 * 1024  # Other signature-related images (< 80KB)
+        
+        if payload_size < size_limit:
+            return True
+    
+    # Check 2: Very small image files (likely logos/signatures)
+    if content_type.startswith('image/') and payload_size < 50 * 1024:  # < 50KB
+        return True
+    
+    # Check 3: Inline disposition (embedded images)
+    if content_disposition and 'inline' in content_disposition.lower():
+        return True
+    
+    # Check 4: Common image extensions with generic names
+    common_image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg']
+    if (any(filename_lower.endswith(ext) for ext in common_image_extensions) and
+        payload_size < 100 * 1024):  # Small images
+        # Check if filename is generic (img1.png, image.jpg, etc.)
+        generic_names = ['image', 'img', 'picture', 'pic', 'photo']
+        if any(filename_lower.startswith(generic) for generic in generic_names):
+            return True
+    
+    return False
+
+
+def export_to_markdown(raw_email, export_directory, base_export_directory, num, tags, quote_depth=1, account=None, contacts_collector=None, debug_mode=False):
     """Export an email to Markdown with frontmatter and handle attachments."""
     email_message = email.message_from_bytes(raw_email)
 
@@ -283,11 +326,14 @@ def export_to_markdown(raw_email, export_directory, base_export_directory, num, 
         for part in email_message.walk():
             content_type = part.get_content_type()
             if content_type == "text/plain":
-                body = part.get_payload(decode=True).decode(errors="ignore")
+                payload = part.get_payload(decode=True)
+                body = payload.decode(errors="ignore") if isinstance(payload, bytes) else str(payload)
             elif content_type == "text/html" and not body:
-                body = part.get_payload(decode=True).decode(errors="ignore")
+                payload = part.get_payload(decode=True)
+                body = payload.decode(errors="ignore") if isinstance(payload, bytes) else str(payload)
     else:
-        body = email_message.get_payload(decode=True).decode(errors="ignore")
+        payload = email_message.get_payload(decode=True)
+        body = payload.decode(errors="ignore") if isinstance(payload, bytes) else str(payload)
 
     # Process quote depth to reduce redundant content
     if quote_depth > 0:
@@ -304,6 +350,9 @@ def export_to_markdown(raw_email, export_directory, base_export_directory, num, 
 
     # Use a base name for attachments (without .md extension and counter)
     base_filename_for_attachments = base_filename  # Use the original base without counter
+    
+    # Get account settings for signature image handling
+    skip_signature_images = account.get('skip_signature_images', False) if account else False
     
     for part in email_message.walk():
         if part.get_content_maintype() == 'multipart':
@@ -341,10 +390,24 @@ def export_to_markdown(raw_email, export_directory, base_export_directory, num, 
             # Decode the filename if it's MIME encoded
             decoded_filename = decode_mime_filename(attachment_filename, debug_mode)
             
-            filename_hash = hashlib.md5(decoded_filename.encode()).hexdigest()[:8]
-            filepath = os.path.join(attachments_dir, f"{base_filename_for_attachments}_{filename_hash}_{decoded_filename}")
+            # Check if this is a signature image that should be skipped
+            content_type = part.get_content_type()
+            content_disposition = part.get('Content-Disposition', '')
             payload = part.get_payload(decode=True)
+            
+            if skip_signature_images and is_signature_image(
+                decoded_filename, 
+                content_type, 
+                len(payload) if payload else 0, 
+                content_disposition
+            ):
+                if debug_mode:
+                    print(f"    Skipping signature image: '{decoded_filename}' ({len(payload) if payload else 0} bytes)")
+                continue
+            
             if payload is not None:
+                filename_hash = hashlib.md5(decoded_filename.encode()).hexdigest()[:8]
+                filepath = os.path.join(attachments_dir, f"{base_filename_for_attachments}_{filename_hash}_{decoded_filename}")
                 with open(filepath, 'wb') as f:
                     f.write(payload)
                 # Calculate relative path from base export directory to attachments directory
@@ -381,6 +444,36 @@ def export_to_markdown(raw_email, export_directory, base_export_directory, num, 
 def export_folder(mail, imap_folder, base_export_directory, account, contacts_collector=None, delete_after_export=False, debug_mode=False):
     """Export all emails from an IMAP folder (including nested folders)."""
     # Handle folder names with spaces and special characters
+    # Keep original folder name for IMAP operations, decode for file system
+    # Store the original parameter value before any modifications
+    original_imap_folder_param = imap_folder  # Store original parameter
+    
+    # Decode folder name for file system use
+    def decode_folder_name_for_filesystem(folder_name):
+        """Decode folder name for safe file system use"""
+        # Apply the same UTF-7 decoding logic
+        utf7_patterns = ['AOk', 'AOg', 'AOk-', 'AOg-', '&AOk', '&AOg']
+        if any(pattern in folder_name for pattern in utf7_patterns) or ('&' in folder_name and '-' in folder_name):
+            try:
+                # Use the same decoding function
+                def simple_decode_utf7(s):
+                    """Simple UTF-7 decoder for common patterns"""
+                    # Replace common encoded sequences
+                    s = s.replace('&AOk-', 'é')  # Common French character
+                    s = s.replace('&AOg-', 'è')  # Common French character
+                    s = s.replace('&AOk', 'é')   # Without dash
+                    s = s.replace('&AOg', 'è')   # Without dash
+                    s = s.replace('AOk', 'é')    # Without &
+                    s = s.replace('AOg', 'è')    # Without &
+                    return s
+                return simple_decode_utf7(folder_name)
+            except:
+                pass
+        return folder_name
+    
+    # Use decoded folder name for file system operations
+    filesystem_folder = decode_folder_name_for_filesystem(imap_folder)
+    
     try:
         # Enhanced UTF-7 decoding function
         def decode_imap_utf7_enhanced(encoded_str):
@@ -442,68 +535,48 @@ def export_folder(mail, imap_folder, base_export_directory, account, contacts_co
             return result
         
         # Try multiple selection strategies
-        strategies = []
+        # IMPORTANT: Always use original_imap_folder_param for IMAP server communication
+        # The server expects the encoded UTF-7 names, not the decoded ones
+        strategies = [original_imap_folder_param]  # Always try the original encoded name first
+        if debug_mode:
+            print(f"  IMAP strategies: {strategies}")
         
-        # Strategy 0: Try enhanced UTF-7 decoding first for known problematic patterns
+        # Strategy 1: Quoted version of original encoded name (for folders with spaces/special chars)
+        special_chars = [' ', '&', '*', '%', '?', '!', '#', '$', '@', '|', '^', '~', '[', ']', '{', '}', '(', ')', ';', ':', '\\', '"', "'"]
+        if ' ' in original_imap_folder_param or any(c in original_imap_folder_param for c in special_chars):
+            strategies.append(f'"{original_imap_folder_param}"')
         
-        # Strategy 0: Try enhanced UTF-7 decoding first for known problematic patterns
-        if any(pattern in imap_folder for pattern in ['AOk-', 'AOg-', 'AOk', 'AOg']):
+        # Strategy 2: Try enhanced UTF-7 decoding for display purposes only
+        # But still use original for IMAP communication
+        if any(pattern in original_imap_folder_param for pattern in ['AOk-', 'AOg-', 'AOk', 'AOg']):
             try:
-                decoded_name = decode_imap_utf7_enhanced(imap_folder)
-                if decoded_name != imap_folder:
-                    strategies.append(f'"{decoded_name}"')
-                    strategies.append(decoded_name)
+                decoded_name = decode_imap_utf7_enhanced(original_imap_folder_param)
+                if decoded_name != original_imap_folder_param:
+                    # For debugging/display only, don't use for IMAP selection
                     if debug_mode:
-                        print(f"  Trying enhanced UTF-7 decoded name: '{decoded_name}'")
+                        print(f"  Decoded folder name (for display): '{decoded_name}' from '{original_imap_folder_param}'")
             except Exception as e:
                 if debug_mode:
                     print(f"  Enhanced UTF-7 decoding failed: {e}")
         
-        # Strategy 1: Direct selection (for simple folder names)
-        strategies.append(imap_folder)
-        
-        # Strategy 2: Quoted selection (for folders with spaces/special chars)
-        special_chars = [' ', '&', '*', '%', '?', '!', '#', '$', '@', '|', '^', '~', '[', ']', '{', '}', '(', ')', ';', ':', '\\', '"', "'"]
-        if ' ' in imap_folder or any(c in imap_folder for c in special_chars):
-            strategies.append(f'"{imap_folder}"')
-        
-        # Strategy 3: Try to detect and handle potential UTF-7 encoding
-        if any(seq in imap_folder for seq in ['&', 'AOk', 'AOg', 'AOk-', 'AOg-']):
-            # This might be UTF-7 encoded, try to decode it
-            try:
-                # Try to decode as UTF-7
-                def simple_decode_utf7(s):
-                    """Simple UTF-7 decoder for common patterns"""
-                    # Replace common encoded sequences
-                    s = s.replace('&AOk-', 'é')  # Common French character
-                    s = s.replace('&AOg-', 'è')  # Common French character
-                    s = s.replace('&AOk', 'é')   # Without dash
-                    s = s.replace('&AOg', 'è')   # Without dash
-                    return s
-                
-                decoded_name = simple_decode_utf7(imap_folder)
-                if decoded_name != imap_folder:
-                    strategies.append(f'"{decoded_name}"')
-                    strategies.append(decoded_name)
-            except:
-                pass
+
         
         # Strategy 0: First try the EXACT name from the server (most likely to work)
         selected_successfully = False
         try:
-            status, messages = mail.select(imap_folder)
+            status, messages = mail.select(original_imap_folder_param)
             if status == "OK":
                 if debug_mode:
-                    print(f"  Selected using exact server name: '{imap_folder}'")
+                    print(f"  Selected using exact server name: '{original_imap_folder_param}'")
                 selected_successfully = True
             else:
-                # If exact name doesn't work, try our decoded strategies
+                # If exact name doesn't work, try our strategies
                 for strategy in strategies:
                     try:
                         status, messages = mail.select(strategy)
                         if status == "OK":
                             if debug_mode:
-                                print(f"  Selected '{imap_folder}' using strategy: {strategy}")
+                                print(f"  Selected '{original_imap_folder_param}' using strategy: {strategy}")
                             selected_successfully = True
                             break
                     except:
@@ -511,13 +584,13 @@ def export_folder(mail, imap_folder, base_export_directory, account, contacts_co
         except Exception as e:
             if debug_mode:
                 print(f"  Exception selecting folder: {e}")
-            # If exact name fails with exception, try our decoded strategies
+            # If exact name fails with exception, try our strategies
             for strategy in strategies:
                 try:
                     status, messages = mail.select(strategy)
                     if status == "OK":
                         if debug_mode:
-                            print(f"  Selected '{imap_folder}' using strategy: {strategy}")
+                            print(f"  Selected '{original_imap_folder_param}' using strategy: {strategy}")
                         selected_successfully = True
                         break
                 except:
@@ -534,11 +607,12 @@ def export_folder(mail, imap_folder, base_export_directory, account, contacts_co
 
     status, messages = mail.search(None, "ALL")
     if status != "OK":
-        print(f" No emails in {imap_folder}")
+        print(f" No emails in {filesystem_folder}")
         return
 
     # Create export directory, handling folder names with spaces
-    folder_parts = imap_folder.split('/')
+    # Use the decoded folder name for file system operations
+    folder_parts = filesystem_folder.split('/')
     export_directory = os.path.join(base_export_directory, *folder_parts)
     try:
         os.makedirs(export_directory, exist_ok=True)
@@ -555,7 +629,7 @@ def export_folder(mail, imap_folder, base_export_directory, account, contacts_co
         if status == "OK":
             raw_email = data[0][1]
             quote_depth = account.get('quote_depth', 1)
-            result = export_to_markdown(raw_email, export_directory, account['export_directory'], num, [imap_folder], quote_depth, account, contacts_collector)
+            result = export_to_markdown(raw_email, export_directory, account['export_directory'], num, [imap_folder], quote_depth, account, contacts_collector, debug_mode)
             if result is False:  # Email was skipped
                 email_message = email.message_from_bytes(raw_email)
                 subject = email_message['Subject']
@@ -705,6 +779,10 @@ def export_account(account, delete_after_export=False):
                             # Remove standalone & characters (not part of valid encoding)
                             result = result.replace('&', '')
                         
+                        # Handle specific French character encodings that might not be caught by base64
+                        result = result.replace('AOk', 'é').replace('AOg', 'è')
+                        result = result.replace('AOk-', 'é').replace('AOg-', 'è')
+                        
                         return result
                     except Exception as e:
                         if debug:
@@ -732,8 +810,11 @@ def export_account(account, delete_after_export=False):
                             print(f"Warning: Could not decode folder name '{encoded_str}', using as-is")
                         return encoded_str
                 
-                # Check if string contains IMAP UTF-7 encoding (&XX- format)
-                if '&' in imap_folder and '-' in imap_folder:
+                # Check if string contains IMAP UTF-7 encoding patterns
+                # Look for common French character encodings: é, è, etc.
+                utf7_patterns = ['AOk', 'AOg', 'AOk-', 'AOg-', '&AOk', '&AOg']
+                original_imap_folder_name = imap_folder  # Save original before decoding
+                if any(pattern in imap_folder for pattern in utf7_patterns) or ('&' in imap_folder and '-' in imap_folder):
                     try:
                         decoded_folder = decode_imap_utf7(imap_folder, debug_mode)
                         if debug_mode:
@@ -782,14 +863,19 @@ def export_account(account, delete_after_export=False):
 
             # Handle folder names with spaces and special characters
             try:
-                # Safely create the display path for printing
+                # Keep the original encoded folder name for IMAP selection
+                # Use the decoded folder name for file system operations
+                # Use the original name saved before UTF-7 decoding
+                original_folder_name = original_imap_folder_name if 'original_imap_folder_name' in locals() else imap_folder
+                
+                # Create display path with decoded folder name for printing
                 try:
                     display_path = os.path.join(account['export_directory'], *imap_folder.split('/'))
                 except:
                     display_path = f"{account['export_directory']}/{imap_folder}"
                 
                 print(f"Exporting {imap_folder} → {display_path}")
-                export_folder(mail, imap_folder, account["export_directory"], account, contacts_collector, delete_after_export, debug_mode)
+                export_folder(mail, original_folder_name, account["export_directory"], account, contacts_collector, delete_after_export, debug_mode)
             except Exception as e:
                 error_msg = str(e)
                 print(f"  Could not process folder '{imap_folder}': {error_msg}")

@@ -110,6 +110,7 @@ EXPORT_SPECIFIC_ACCOUNTS="Gmail,LaContreVoie" python export_emails.py
 - **`quote_depth`** : Profondeur maximale des citations à conserver (par défaut: 1)
 - **`skip_existing`** : Ignore les emails déjà exportés (activé par défaut)
 - **`collect_contacts`** : Génère un fichier de contacts CSV (désactivé par défaut)
+- **`skip_signature_images`** : Ignore les images de signature et logos (désactivé par défaut)
 
 ### Options d'exécution
 
@@ -188,10 +189,34 @@ accounts:
     quote_depth: 1
     skip_existing: true
     collect_contacts: true
+    skip_signature_images: true  # Nouvelle option pour ignorer les images de signature
     ignored_folders:
       - "[Gmail]/Spam"
       - "[Gmail]/Trash"
       - "[Gmail]/Drafts"
+```
+
+### Filtrage des images de signature
+
+Le script peut maintenant détecter et ignorer automatiquement les images de signature et logos pour éviter d'encombrer vos exports avec des fichiers inutiles.
+
+**Comment ça marche** :
+- Détection des noms de fichiers courants (signature.png, logo.jpg, etc.)
+- Filtrage des petites images (< 50KB) qui sont généralement des logos
+- Ignore les images avec disposition "inline" (images intégrées)
+- Filtrage des images génériques (image1.png, img2.jpg, etc.)
+
+**Pour l'activer** :
+```yaml
+skip_signature_images: true
+```
+
+**Exemple de sortie** :
+```bash
+📁 Exporting INBOX → /chemin/vers/export/INBOX
+    Skipping signature image: 'signature.png' (12345 bytes)
+    Skipping signature image: 'company_logo.jpg' (8765 bytes)
+✅ INBOX: 5 emails exported (2 signature images skipped)
 ```
 
 ### Structure des fichiers exportés

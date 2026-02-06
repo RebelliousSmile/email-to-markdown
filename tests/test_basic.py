@@ -91,5 +91,25 @@ def test_analyze_email_type_with_header_objects():
     assert "type" in result
 
 
+def test_signature_image_detection():
+    """Test the signature image detection function."""
+    from export_emails import is_signature_image
+    
+    # Test signature images (should be detected)
+    assert is_signature_image("signature.png", "image/png", 1024, "inline") == True
+    assert is_signature_image("logo.jpg", "image/jpeg", 5120, "attachment") == True
+    assert is_signature_image("company_banner.gif", "image/gif", 2048, "inline") == True
+    assert is_signature_image("image1.png", "image/png", 8192, "inline") == True  # Generic name + small
+    
+    # Test real attachments (should NOT be detected as signature)
+    assert is_signature_image("contract.pdf", "application/pdf", 102400, "attachment") == False
+    assert is_signature_image("photo_vacation.jpg", "image/jpeg", 2048000, "attachment") == False  # Large image
+    assert is_signature_image("document.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 51200, "attachment") == False
+    
+    # Edge cases
+    assert is_signature_image("large_signature.png", "image/png", 60000, "attachment") == False  # Too large for signature
+    assert is_signature_image("small_document.txt", "text/plain", 1024, "attachment") == False  # Small but not image
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
