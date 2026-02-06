@@ -220,8 +220,10 @@ def is_signature_image(attachment_filename, content_type, payload_size, content_
         return True
     
     # Check 3: Inline disposition (embedded images)
-    if content_disposition and 'inline' in content_disposition.lower():
-        return True
+    if content_disposition:
+        disposition_str = str(content_disposition).lower() if hasattr(content_disposition, 'lower') else str(content_disposition).lower()
+        if 'inline' in disposition_str:
+            return True
     
     # Check 4: Common image extensions with generic names
     common_image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg']
