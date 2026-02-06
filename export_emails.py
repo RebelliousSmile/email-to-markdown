@@ -9,6 +9,8 @@ import csv
 import traceback
 import base64
 import quopri
+import argparse
+import sys
 from datetime import datetime
 from dotenv import load_dotenv
 from collections import defaultdict
@@ -266,11 +268,24 @@ def export_to_markdown(raw_email, export_directory, base_export_directory, num, 
     else:
         subject_hash = "no-subject"
     
+    # Convert email header objects to strings to avoid complex YAML tags
+    def header_to_string(header):
+        """Convert email header to plain string"""
+        if header is None:
+            return ""
+        if isinstance(header, str):
+            return header
+        # Handle Header objects and other types
+        try:
+            return str(header)
+        except:
+            return ""
+    
     frontmatter = {
-        "from": email_message["From"],
-        "to": email_message["To"],
+        "from": header_to_string(email_message["From"]),
+        "to": header_to_string(email_message["To"]),
         "date": email.utils.parsedate_to_datetime(email_message["Date"]).isoformat(),
-        "subject": email_message["Subject"],
+        "subject": header_to_string(email_message["Subject"]),
         "subject_hash": subject_hash,
         "tags": tags,
         "attachments": []
@@ -959,26 +974,57 @@ def export_account(account, delete_after_export=False):
 
 def main():
     """Main function to run the email export."""
-    # Check if we should export only specific accounts
-    specific_accounts = os.getenv('EXPORT_SPECIFIC_ACCOUNTS', '').strip()
+    parser = argparse.ArgumentParser(description='Export emails from IMAP accounts to Markdown')
+    parser.add_argument('--account', help='Export only specific account(s) - comma separated', 
+                       default=None)
+    parser.add_argument('--list-accounts', help='List available accounts', action='store_true')
+    parser.add_argument('--all', help='Export all accounts (default)', action='store_true')
+    parser.add_argument('--delete-after-export', help='Delete emails after export (dangerous!)', 
+                       action='store_true')
+    
+    args = parser.parse_args()
+    
+    # Handle --list-accounts option
+    if args.list_accounts:
+        print("📋 Available accounts from accounts.yaml:")
+        for i, account in enumerate(config['accounts'], 1):
+            export_dir = account.get('export_directory', 'Not configured')
+            print(f"   {i}. {account['name']} → {export_dir}")
+        return
+    
+    # Determine which accounts to export
     accounts_to_export = []
-
-    if specific_accounts:
-        # Export only the specified accounts (comma-separated, case-insensitive)
-        specific_accounts_list = [name.strip().lower() for name in specific_accounts.split(',')]
+    
+    if args.account:
+        # Export only specified accounts (comma-separated, case-insensitive)
+        account_names = [name.strip() for name in args.account.split(',')]
         for account in config['accounts']:
-            if account['name'].lower() in specific_accounts_list:
+            if account['name'].lower() in [name.lower() for name in account_names]:
                 accounts_to_export.append(account)
-                print(f"Selected account for export: {account['name']}")
+                print(f"🎯 Selected account for export: {account['name']}")
             else:
-                print(f"Skipping account: {account['name']}")
-    else:
-        # Export all accounts
+                print(f"📥 Skipping account: {account['name']}")
+    elif args.all or not args.account:
+        # Export all accounts (default behavior)
         accounts_to_export = config['accounts']
-
+        print(f"📧 Exporting all {len(accounts_to_export)} accounts")
+    
+    # Check if any accounts were selected
+    if not accounts_to_export:
+        print("❌ No accounts selected for export")
+        print("Available accounts:")
+        for account in config['accounts']:
+            print(f"   - {account['name']}")
+        print("\nUsage:")
+        print(f"   python3 {sys.argv[0]} --account Gmail")
+        print(f"   python3 {sys.argv[0]} --account Gmail,LaContreVoie")
+        print(f"   python3 {sys.argv[0]} --all")
+        print(f"   python3 {sys.argv[0]} --list-accounts")
+        return
+    
     # Run export for selected accounts
     for account in accounts_to_export:
-        export_account(account, delete_after_export=False)
+        export_account(account, delete_after_export=args.delete_after_export)
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,52 @@
+{
+  "summary": {
+    "total_emails": 2,
+    "categories": {
+      "delete": 0,
+      "summarize": 1,
+      "keep": 1
+    },
+    "recommendations": {
+      "delete": "0.0% of emails can be deleted",
+      "summarize": "50.0% of emails can be summarized",
+      "keep": "50.0% of emails should be kept in full"
+    }
+  },
+  "details": {
+    "by_type": {
+      "group": 2
+    },
+    "by_sender": {
+      "boss@company.com": 1,
+      "normal@user.com": 1
+    },
+    "by_date": {}
+  },
+  "categories": {
+    "delete": [],
+    "summarize": [
+      {
+        "file": "test_normal.md",
+        "subject": "Regular email",
+        "sender": "normal@user.com",
+        "date": "Unknown",
+        "score": -1,
+        "type": "group",
+        "size": 200,
+        "attachments": 0
+      }
+    ],
+    "keep": [
+      {
+        "file": "test_whitelist.md",
+        "subject": "Important meeting",
+        "sender": "boss@company.com",
+        "date": "Unknown",
+        "score": -1,
+        "type": "group",
+        "size": 190,
+        "attachments": 0
+      }
+    ]
+  }
+}
