@@ -36,12 +36,12 @@ pip install -r requirements.txt
 
 ### 3. Configurer les comptes email
 
-#### a. Créer le fichier `accounts.yaml`
+#### a. Créer le fichier `config/accounts.yaml`
 
 Copiez et modifiez le fichier d'exemple :
 
 ```bash
-cp accounts.yaml.example accounts.yaml
+cp config/accounts.yaml.example config/accounts.yaml
 ```
 
 Exemple de configuration :

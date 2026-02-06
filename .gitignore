@@ -43,10 +43,26 @@ env/
 venv/
 
 # Fichiers de configuration spécifiques
-accounts.yaml
+config/accounts.yaml
+config/sort_config.json
+config/test_config.json
 
 # Fichiers de cache macOS
 .DS_Store
 
 # Fichiers de cache Windows
 Thumbs.db
+
+# <AIDD>
+#
+# You might want to ignore the following files and directories:
+#
+aidd* # AIDD installation folder
+aidd/
+docs/
+worktrees/
+
+.claude
+.opencode
+
+# </AIDD>

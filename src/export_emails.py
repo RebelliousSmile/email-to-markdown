@@ -19,7 +19,7 @@ from collections import defaultdict
 load_dotenv()
 
 # Load account configuration from YAML file
-with open('accounts.yaml', 'r') as f:
+with open('../config/accounts.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 # Inject passwords from .env

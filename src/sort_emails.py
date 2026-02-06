@@ -496,7 +496,7 @@ class EmailSorter:
 def load_accounts_config():
     """Load accounts configuration from accounts.yaml"""
     try:
-        with open('accounts.yaml', 'r') as f:
+        with open('../config/accounts.yaml', 'r') as f:
             return yaml.safe_load(f)
     except FileNotFoundError:
         print("⚠️  accounts.yaml not found - using manual directory specification")
@@ -545,7 +545,7 @@ def main():
         if args.directory:
             config_path = args.directory
         else:
-            config_path = 'sort_config.json'
+            config_path = '../config/sort_config.json'
         
         create_default_config(config_path)
         print(f"📝 Configuration file created: {config_path}")
@@ -637,7 +637,7 @@ def main():
             if len(emails) > 5:
                 print(f"  ... and {len(emails) - 5} more")
 
-def create_default_config(output_path='sort_config.json'):
+def create_default_config(output_path='../config/sort_config.json'):
     """Create a default configuration file with whitelist support."""
     default_config = {
         "delete_keywords": [

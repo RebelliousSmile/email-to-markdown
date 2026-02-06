@@ -10,7 +10,7 @@ import sys
 # Add the project root to the Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from export_emails import (
+from src.export_emails import (
     limit_quote_depth,
     analyze_email_type,
     email_already_exported
