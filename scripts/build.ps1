@@ -1,0 +1,153 @@
+# build.ps1 - Script de compilation pour Email to Markdown
+# Usage: .\scripts\build.ps1 [-Release] [-Features <features>]
+
+param(
+    [switch]$Release,
+    [string]$Features = "",
+    [switch]$Help
+)
+
+if ($Help) {
+    Write-Host @"
+Usage: .\scripts\build.ps1 [options]
+
+Options:
+    -Release    Build en mode release (optimise)
+    -Features   Features a activer (ex: "tray")
+    -Help       Affiche cette aide
+
+Exemples:
+    .\scripts\build.ps1                      # Build debug
+    .\scripts\build.ps1 -Release             # Build release
+    .\scripts\build.ps1 -Features tray       # Build avec system tray
+    .\scripts\build.ps1 -Release -Features tray
+"@
+    exit 0
+}
+
+# Fonction pour trouver Visual Studio
+function Find-VisualStudio {
+    $vswherePath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+    if (Test-Path $vswherePath) {
+        $vsPath = & $vswherePath -latest -property installationPath
+        if ($vsPath) {
+            return $vsPath
+        }
+    }
+
+    # Fallback: chercher manuellement
+    $paths = @(
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Community",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Professional",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Enterprise",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\Community",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2019\BuildTools"
+    )
+
+    foreach ($path in $paths) {
+        if (Test-Path $path) {
+            return $path
+        }
+    }
+
+    return $null
+}
+
+# Fonction pour trouver link.exe MSVC
+function Find-MSVCLinker {
+    param([string]$vsPath)
+
+    $vcToolsPath = Get-ChildItem "$vsPath\VC\Tools\MSVC" -ErrorAction SilentlyContinue |
+                   Sort-Object Name -Descending |
+                   Select-Object -First 1
+
+    if ($vcToolsPath) {
+        $linkPath = "$($vcToolsPath.FullName)\bin\Hostx64\x64\link.exe"
+        if (Test-Path $linkPath) {
+            return $linkPath
+        }
+    }
+
+    return $null
+}
+
+# Verifier si le link.exe actuel est le bon
+function Test-LinkExe {
+    $linkOutput = & link.exe 2>&1
+    # Le link.exe MSVC affiche "Microsoft (R) Incremental Linker"
+    return $linkOutput -match "Microsoft.*Linker"
+}
+
+Write-Host "=== Email to Markdown Build Script ===" -ForegroundColor Cyan
+
+# Verifier le linker actuel
+if (-not (Test-LinkExe)) {
+    Write-Host "Le link.exe dans le PATH n'est pas le linker MSVC." -ForegroundColor Yellow
+    Write-Host "Recherche de Visual Studio..." -ForegroundColor Yellow
+
+    $vsPath = Find-VisualStudio
+
+    if ($vsPath) {
+        Write-Host "Visual Studio trouve: $vsPath" -ForegroundColor Green
+
+        $linkerPath = Find-MSVCLinker $vsPath
+
+        if ($linkerPath) {
+            $linkerDir = Split-Path $linkerPath -Parent
+            Write-Host "Ajout au PATH: $linkerDir" -ForegroundColor Green
+            $env:PATH = "$linkerDir;$env:PATH"
+        } else {
+            Write-Host "Erreur: link.exe MSVC non trouve dans Visual Studio" -ForegroundColor Red
+            Write-Host "Installez 'Desktop development with C++' dans Visual Studio Installer" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "Erreur: Visual Studio non trouve" -ForegroundColor Red
+        Write-Host "Installez Visual Studio Build Tools depuis:" -ForegroundColor Yellow
+        Write-Host "https://visualstudio.microsoft.com/downloads/" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+# Construire la commande cargo
+$cargoArgs = @("build")
+
+if ($Release) {
+    $cargoArgs += "--release"
+    Write-Host "Mode: Release" -ForegroundColor Green
+} else {
+    Write-Host "Mode: Debug" -ForegroundColor Green
+}
+
+if ($Features) {
+    $cargoArgs += "--features"
+    $cargoArgs += $Features
+    Write-Host "Features: $Features" -ForegroundColor Green
+}
+
+Write-Host ""
+Write-Host "Execution: cargo $($cargoArgs -join ' ')" -ForegroundColor Cyan
+Write-Host ""
+
+# Trouver cargo
+$cargoPath = "$env:USERPROFILE\.cargo\bin\cargo.exe"
+if (-not (Test-Path $cargoPath)) {
+    $cargoPath = "cargo"  # Fallback au PATH
+}
+
+# Executer cargo
+& $cargoPath @cargoArgs
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Host "Build reussi!" -ForegroundColor Green
+
+    $targetDir = if ($Release) { "target\release" } else { "target\debug" }
+    Write-Host "Executable: $targetDir\email-to-markdown.exe" -ForegroundColor Cyan
+} else {
+    Write-Host ""
+    Write-Host "Build echoue avec le code $LASTEXITCODE" -ForegroundColor Red
+    exit $LASTEXITCODE
+}

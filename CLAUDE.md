@@ -1,0 +1,176 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Email to Markdown Exporter - A Rust CLI tool to export emails from IMAP accounts to Markdown files with YAML frontmatter. Handles attachments, nested folders, contact collection, and quote depth limiting.
+
+> **Note**: This project was migrated from Python to Rust. Legacy Python code is in `archive/python_src/`.
+
+## Commands
+
+### Building the project
+```bash
+# Debug build
+cargo build
+
+# Release build (optimized)
+cargo build --release
+
+# Run tests
+cargo test
+
+# Run with debug output
+RUST_BACKTRACE=1 cargo run -- export --debug
+```
+
+### Import from Thunderbird [1]
+```bash
+# List available Thunderbird profiles
+cargo run -- import --list-profiles
+
+# Auto-detect and import from default profile
+cargo run -- import
+
+# Import from specific profile path
+cargo run -- import --profile ~/.thunderbird/abc123.default
+
+# Also generate .env template
+cargo run -- import --generate-env
+```
+
+### Running the export
+```bash
+# Export all configured accounts
+cargo run -- export
+
+# Export specific account(s)
+cargo run -- export --account Gmail
+cargo run -- export --account Gmail,Outlook
+
+# List available accounts
+cargo run -- export --list-accounts
+
+# Debug mode (verbose IMAP output)
+cargo run -- export --account Gmail --debug
+```
+
+### Fix malformed YAML
+```bash
+# Dry run - show what would be fixed
+cargo run -- fix ./exports/gmail --dry-run
+
+# Actually fix the files
+cargo run -- fix ./exports/gmail --apply
+```
+
+### Sort emails
+```bash
+# Sort emails for a specific account
+cargo run -- sort --account Gmail
+
+# Sort emails in a directory
+cargo run -- sort ./exports/gmail
+
+# List accounts
+cargo run -- sort --list-accounts
+
+# Create default config
+cargo run -- sort --create-config
+```
+
+## Architecture
+
+### Core Modules (src/)
+
+- **`main.rs`**: CLI entry point using clap
+- **`lib.rs`**: Module exports
+- **`config.rs`**: Configuration loading (accounts.yaml, sort_config.json)
+- **`email_export.rs`**: IMAP client and email export logic
+  - `ImapExporter`: IMAP connection and folder iteration
+  - `export_to_markdown()`: Converts email to Markdown with frontmatter
+  - `analyze_email_type()`: Classifies emails (direct, group, newsletter)
+  - `ContactsCollector`: Collects and exports contacts to CSV
+- **`fix_yaml.rs`**: YAML frontmatter correction
+  - `fix_complex_yaml_tags()`: Removes Python-specific YAML tags
+  - `scan_and_fix_directory()`: Batch fix operation
+- **`sort_emails.rs`**: Email categorization
+  - `EmailSorter`: Analyzes and categorizes emails
+  - Categories: delete, summarize, keep
+- **`utils.rs`**: Shared utilities
+  - `limit_quote_depth()`: Reduces citation depth
+  - `get_short_name()`: Extracts initials from email addresses
+  - `is_signature_image()`: Detects signature images
+  - `decode_imap_utf7()`: Decodes IMAP folder names
+- **`thunderbird.rs`**: Thunderbird profile import [1]
+  - `list_profiles()`: Lists available Thunderbird profiles
+  - `extract_accounts()`: Extracts IMAP accounts from prefs.js
+  - `generate_accounts_yaml()`: Generates accounts.yaml from Thunderbird config
+
+### Configuration
+
+- **`config/accounts.yaml`**: IMAP account settings
+- **`config/sort_config.json`**: Sorting rules and thresholds
+- **`.env`**: Passwords as `{ACCOUNT_NAME}_PASSWORD` or `{ACCOUNT_NAME}_APPLICATION_PASSWORD`
+
+### Key Options (per account in accounts.yaml)
+
+- `quote_depth`: Max citation depth to preserve (default: 1)
+- `skip_existing`: Skip already exported emails (default: true)
+- `collect_contacts`: Generate CSV contact file (default: false)
+- `skip_signature_images`: Filter signature/logo images (default: false)
+- `delete_after_export`: Remove emails after export (default: false)
+
+### Output Structure
+
+```
+export_directory/
+├── INBOX/
+│   └── email_YYYY-MM-DD_SENDER_to_RECIPIENT.md
+├── Sent/
+│   └── ...
+└── attachments/
+    └── INBOX/
+        └── email_YYYY-MM-DD_SENDER_to_RECIPIENT_hash_filename.ext
+```
+
+## Dependencies (Cargo.toml)
+
+Key crates:
+- `imap`: IMAP client
+- `mailparse`: Email parsing
+- `serde`, `serde_yaml`, `serde_json`: Serialization
+- `clap`: CLI argument parsing
+- `chrono`: Date/time handling
+- `regex`: Pattern matching
+- `encoding_rs`: Character encoding
+- `walkdir`: Directory traversal
+
+## Directory Structure
+
+### `src/`
+Rust source code
+
+### `tests/`
+Rust integration tests
+
+### `archive/python_src/`
+Legacy Python code (for reference)
+
+### `archive/python_tests/`
+Legacy Python tests (for reference)
+
+### `docs/`
+Project documentation and AI workflow support
+
+### `config/`
+Configuration files (accounts.yaml, sort_config.json)
+
+## Technical Notes
+
+- IMAP modified UTF-7 encoding handled for folder names with special characters
+- Folder names with spaces require quoting in IMAP SELECT commands
+- Email filenames use sender/recipient initials for readability
+- Attachments stored in mirrored folder structure under `attachments/`
+- Cross-platform support (Windows, Linux, macOS)

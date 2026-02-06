@@ -1,0 +1,79 @@
+[package]
+name = "email-to-markdown"
+version = "0.1.0"
+edition = "2021"
+authors = ["FX Guillois"]
+description = "Export emails from IMAP accounts to Markdown files with YAML frontmatter"
+license = "MIT"
+keywords = ["email", "imap", "markdown", "export"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+# IMAP client
+imap = "3.0.0-alpha.15"
+native-tls = "0.2"
+
+# Email parsing
+mailparse = "0.14"
+
+# YAML handling
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+
+# Regex for text processing
+regex = "1.10"
+
+# Date and time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# File system utilities
+walkdir = "2.4"
+glob = "0.3"
+
+# Environment variables and configuration
+dotenv = "0.15"
+
+# Command line argument parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# Hash functions
+md5 = "0.7"
+
+# Character encoding
+encoding_rs = "0.8"
+
+# CSV support
+csv = "1.3"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# System tray (optional)
+tray-icon = { version = "0.19", optional = true }
+tao = { version = "0.30", optional = true }
+rfd = { version = "0.15", optional = true }
+
+# Open files with default application
+open = "5.3"
+
+# Image handling for tray icon
+image = { version = "0.25", optional = true }
+
+[features]
+default = []
+tray = ["tray-icon", "tao", "rfd", "image"]
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[[bin]]
+name = "email-to-markdown"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

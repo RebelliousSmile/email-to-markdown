@@ -1,0 +1,40 @@
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Environment
+.env
+.env.local
+*.env
+
+# Build artifacts
+/target/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# User data (exports and sensitive config)
+exports/
+config/accounts.yaml
+
+# Test outputs
+tests/test_emails/sort_report.json
+
+# Legacy and large directories
+archive/
+
+# AIDD
+aidd/
+docs/
+worktrees/

@@ -1,0 +1,37 @@
+# Email accounts configuration
+# Copy this file to accounts.yaml and fill in your credentials
+
+accounts:
+  - name: Gmail
+    server: imap.gmail.com
+    port: 993
+    username: your.email@gmail.com
+    export_directory: ./exports/gmail
+    ignored_folders:
+      - "[Gmail]/Spam"
+      - "[Gmail]/Trash"
+      - "[Gmail]/All Mail"
+    quote_depth: 1
+    skip_existing: true
+    collect_contacts: false
+    skip_signature_images: true
+    delete_after_export: false
+
+  - name: Outlook
+    server: outlook.office365.com
+    port: 993
+    username: your.email@outlook.com
+    export_directory: ./exports/outlook
+    ignored_folders:
+      - Junk
+      - Deleted Items
+    quote_depth: 1
+    skip_existing: true
+    collect_contacts: true
+    skip_signature_images: true
+    delete_after_export: false
+
+# Passwords should be stored in .env file:
+# GMAIL_PASSWORD=your-app-password
+# GMAIL_APPLICATION_PASSWORD=your-app-password (for 2FA accounts)
+# OUTLOOK_PASSWORD=your-password

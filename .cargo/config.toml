@@ -1,0 +1,64 @@
+# Cargo configuration for email-to-markdown
+# Documentation: https://doc.rust-lang.org/cargo/reference/config.html
+
+# =============================================================================
+# LINKER MSVC
+# =============================================================================
+# Si vous avez l'erreur "link: extra operand", decommenter et ajuster le chemin
+# Pour trouver le chemin: ouvrir "Developer Command Prompt" -> "where link.exe"
+
+# [target.x86_64-pc-windows-msvc]
+# linker = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\Hostx64\\x64\\link.exe"
+
+# Variantes communes:
+# Visual Studio 2022 Community:
+# linker = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\Hostx64\\x64\\link.exe"
+#
+# Visual Studio 2022 Build Tools:
+# linker = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.38.33130\\bin\\Hostx64\\x64\\link.exe"
+#
+# Visual Studio 2019:
+# linker = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64\\link.exe"
+
+# =============================================================================
+# BUILD SETTINGS
+# =============================================================================
+
+[build]
+# Incremental compilation pour les builds debug
+incremental = true
+
+# =============================================================================
+# ALIAS DE COMMANDES
+# =============================================================================
+
+[alias]
+# cargo tray -> lance le system tray
+tray = "run --features tray -- tray"
+
+# cargo export-all -> exporte tous les comptes
+export-all = "run -- export"
+
+# cargo br -> build release
+br = "build --release"
+
+# cargo rr -> run release
+rr = "run --release"
+
+# =============================================================================
+# VARIABLES D'ENVIRONNEMENT
+# =============================================================================
+
+[env]
+# Activer les backtraces par defaut
+# RUST_BACKTRACE = "1"
+
+# =============================================================================
+# CONFIGURATION RESEAU (pour les proxies)
+# =============================================================================
+
+# [http]
+# proxy = "http://proxy.example.com:8080"
+
+# [net]
+# git-fetch-with-cli = true
