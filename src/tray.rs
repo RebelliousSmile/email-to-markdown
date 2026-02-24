@@ -21,6 +21,7 @@ use crate::tray_actions::{
 /// Menu item identifiers.
 mod menu_ids {
     pub const IMPORT_THUNDERBIRD: &str = "import_thunderbird";
+    pub const CHOOSE_EXPORT_DIR: &str = "choose_export_dir";
     pub const OPEN_CONFIG: &str = "open_config";
     pub const OPEN_DOCUMENTATION: &str = "open_documentation";
     pub const QUIT: &str = "quit";
@@ -149,6 +150,14 @@ fn create_menu() -> Result<Menu> {
         no_accel.clone(),
     ))?;
 
+    // Choose export directory
+    menu.append(&MenuItem::with_id(
+        menu_ids::CHOOSE_EXPORT_DIR,
+        "Choisir répertoire d'export…",
+        true,
+        no_accel.clone(),
+    ))?;
+
     // Open config
     menu.append(&MenuItem::with_id(
         menu_ids::OPEN_CONFIG,
@@ -184,6 +193,9 @@ fn handle_menu_event(id: &str, result_sender: mpsc::Sender<ActionResult>) {
     match id {
         menu_ids::IMPORT_THUNDERBIRD => {
             tray_actions::action_import_thunderbird(result_sender);
+        }
+        menu_ids::CHOOSE_EXPORT_DIR => {
+            tray_actions::action_choose_export_dir(result_sender);
         }
         menu_ids::OPEN_CONFIG => {
             if let Err(e) = tray_actions::action_open_config() {

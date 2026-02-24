@@ -201,6 +201,63 @@ fn run_import_thunderbird(extract_passwords: bool) -> Result<String> {
     Ok(message)
 }
 
+/// Open a folder picker and update export_directory for all accounts.
+pub fn action_choose_export_dir(result_sender: Sender<ActionResult>) {
+    // FileDialog must run on the main thread on some platforms — keep it here
+    let folder = rfd::FileDialog::new()
+        .set_title("Choisir le répertoire d'export")
+        .pick_folder();
+
+    let Some(base_dir) = folder else {
+        return; // user cancelled
+    };
+
+    thread::spawn(move || {
+        let result = set_export_dir(&base_dir);
+        let action_result = match result {
+            Ok(msg) => ActionResult::Success(msg),
+            Err(e) => ActionResult::Error(format!("Erreur répertoire d'export : {}", e)),
+        };
+        let _ = result_sender.send(action_result);
+    });
+}
+
+fn set_export_dir(base_dir: &std::path::Path) -> Result<String> {
+    let config_path = PathBuf::from("config/accounts.yaml");
+
+    if !config_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Aucun compte configuré. Importez d'abord depuis Thunderbird."
+        ));
+    }
+
+    // Manipulate raw YAML to avoid serialising passwords back to disk
+    let content = std::fs::read_to_string(&config_path)?;
+    let mut yaml: serde_yaml::Value = serde_yaml::from_str(&content)?;
+
+    let mut count = 0usize;
+    if let Some(accounts) = yaml
+        .get_mut("accounts")
+        .and_then(|a| a.as_sequence_mut())
+    {
+        for account in accounts.iter_mut() {
+            if let Some(name) = account.get("name").and_then(|n| n.as_str()) {
+                let export_dir = base_dir.join(name).to_string_lossy().replace('\\', "/");
+                account["export_directory"] = serde_yaml::Value::String(export_dir);
+                count += 1;
+            }
+        }
+    }
+
+    std::fs::write(&config_path, serde_yaml::to_string(&yaml)?)?;
+
+    Ok(format!(
+        "{} compte(s) mis à jour → {}",
+        count,
+        base_dir.display()
+    ))
+}
+
 /// Open the documentation (README.md) in the default viewer.
 pub fn action_open_documentation() -> Result<()> {
     let readme_paths = [
