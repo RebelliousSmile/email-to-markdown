@@ -225,39 +225,18 @@ pub fn action_choose_export_dir(result_sender: Sender<ActionResult>) {
 }
 
 fn set_export_dir(base_dir: &std::path::Path) -> Result<String> {
-    let config_path = config::accounts_yaml_path();
+    let settings_path = config::settings_path();
+    let mut settings = config::Settings::load(&settings_path).unwrap_or_default();
 
-    if !config_path.exists() {
-        return Err(anyhow::anyhow!(
-            "Aucun compte configuré. Importez d'abord depuis Thunderbird."
-        ));
-    }
+    settings.export_base_dir = Some(base_dir.to_string_lossy().replace('\\', "/"));
+    settings.save(&settings_path)?;
 
-    // Manipulate raw YAML to avoid serialising passwords back to disk
-    let content = std::fs::read_to_string(&config_path)?;
-    let mut yaml: serde_yaml::Value = serde_yaml::from_str(&content)?;
+    // Count accounts to report
+    let count = Config::load(&config::accounts_yaml_path())
+        .map(|c| c.accounts.len())
+        .unwrap_or(0);
 
-    let mut count = 0usize;
-    if let Some(accounts) = yaml
-        .get_mut("accounts")
-        .and_then(|a| a.as_sequence_mut())
-    {
-        for account in accounts.iter_mut() {
-            if let Some(name) = account.get("name").and_then(|n| n.as_str()) {
-                let export_dir = base_dir.join(name).to_string_lossy().replace('\\', "/");
-                account["export_directory"] = serde_yaml::Value::String(export_dir);
-                count += 1;
-            }
-        }
-    }
-
-    std::fs::write(&config_path, serde_yaml::to_string(&yaml)?)?;
-
-    Ok(format!(
-        "{} compte(s) mis à jour → {}",
-        count,
-        base_dir.display()
-    ))
+    Ok(format!("{} compte(s) → {}", count, base_dir.display()))
 }
 
 /// Open the documentation (README.md) in the default viewer.
@@ -278,38 +257,40 @@ pub fn action_open_documentation() -> Result<()> {
     Err(anyhow::anyhow!("README.md not found"))
 }
 
-/// Open the configuration file in the default editor.
+/// Open settings.yaml in the default editor (creates a template if absent).
 pub fn action_open_config() -> Result<()> {
-    let config_path = config::accounts_yaml_path();
+    let settings_path = config::settings_path();
 
-    if !config_path.exists() {
-        // Create a template if it doesn't exist
-        if let Some(parent) = config_path.parent() {
+    if !settings_path.exists() {
+        if let Some(parent) = settings_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let template = r#"# Email to Markdown - Accounts Configuration
-# Add your IMAP accounts here
+        let template = r#"# Email to Markdown — Application settings
+# Set export_base_dir, then each account gets a sub-folder named after the account.
 
-accounts:
-  - name: Example
-    server: imap.example.com
-    port: 993
-    username: user@example.com
-    export_directory: ./exports/example
-    quote_depth: 1
-    skip_existing: true
-    collect_contacts: false
-    skip_signature_images: false
-    delete_after_export: false
-    ignored_folders:
-      - Drafts
-      - Trash
-      - Spam
+# Root directory for all exported emails
+# export_base_dir: C:/Users/YourName/Documents/Emails
+
+# Default behaviour for all accounts
+defaults:
+  quote_depth: 1
+  skip_existing: true
+  collect_contacts: false
+  skip_signature_images: true
+  delete_after_export: false
+
+# Per-account overrides (optional)
+# accounts:
+#   Gmail:
+#     folder_name: gmail          # custom sub-folder name (default: account name)
+#     delete_after_export: false
+#   Outlook:
+#     collect_contacts: true
 "#;
-        std::fs::write(&config_path, template)?;
+        std::fs::write(&settings_path, template)?;
     }
 
-    open::that(&config_path).context("Failed to open configuration file")?;
+    open::that(&settings_path).context("Failed to open settings file")?;
     Ok(())
 }
 

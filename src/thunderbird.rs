@@ -274,8 +274,7 @@ fn default_ignored_folders(name: &str) -> Vec<String> {
 /// Generate accounts.yaml content from extracted accounts
 pub fn generate_accounts_yaml(accounts: &[Account]) -> String {
     let mut yaml = String::from("# Auto-generated from Thunderbird configuration\n");
-    yaml.push_str("# Review and adjust settings as needed\n");
-    yaml.push_str("# Passwords must be added to .env file\n\n");
+    yaml.push_str("# Connection info only — behaviour is configured in settings.yaml\n\n");
     yaml.push_str("accounts:\n");
 
     for account in accounts {
@@ -283,24 +282,11 @@ pub fn generate_accounts_yaml(accounts: &[Account]) -> String {
         yaml.push_str(&format!("    server: \"{}\"\n", account.server));
         yaml.push_str(&format!("    port: {}\n", account.port));
         yaml.push_str(&format!("    username: \"{}\"\n", account.username));
-        yaml.push_str(&format!("    export_directory: \"{}\"\n", account.export_directory));
         yaml.push_str("    ignored_folders:\n");
         for folder in &account.ignored_folders {
             yaml.push_str(&format!("      - \"{}\"\n", folder));
         }
-        yaml.push_str(&format!("    quote_depth: {}\n", account.quote_depth));
-        yaml.push_str(&format!("    skip_existing: {}\n", account.skip_existing));
-        yaml.push_str(&format!("    collect_contacts: {}\n", account.collect_contacts));
-        yaml.push_str(&format!("    skip_signature_images: {}\n", account.skip_signature_images));
-        yaml.push_str(&format!("    delete_after_export: {}\n", account.delete_after_export));
         yaml.push('\n');
-    }
-
-    // Add .env reminder
-    yaml.push_str("# Add passwords to .env file:\n");
-    for account in accounts {
-        let env_var = account.name.to_uppercase().replace(' ', "_");
-        yaml.push_str(&format!("# {}_PASSWORD=your_password\n", env_var));
     }
 
     yaml

@@ -29,9 +29,119 @@ pub fn env_file_path() -> PathBuf {
     app_config_dir().join(".env")
 }
 
+/// Path to `settings.yaml` (app behaviour, export dirs).
+pub fn settings_path() -> PathBuf {
+    app_config_dir().join("settings.yaml")
+}
+
 /// Path to `sort_config.json`.
 pub fn sort_config_path() -> PathBuf {
     app_config_dir().join("sort_config.json")
+}
+
+// ── Settings (settings.yaml) ─────────────────────────────────────────────────
+
+/// Per-account behaviour overrides stored in settings.yaml.
+/// All fields are optional so unset values fall back to `Settings::defaults`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AccountBehavior {
+    /// Override the subdirectory name used inside `export_base_dir`.
+    /// Defaults to the account name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote_depth: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_existing: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collect_contacts: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_signature_images: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delete_after_export: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct Settings {
+    /// Root directory where all account sub-folders will be created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export_base_dir: Option<String>,
+
+    /// Default behaviour applied to every account unless overridden.
+    #[serde(default)]
+    pub defaults: AccountBehavior,
+
+    /// Per-account overrides keyed by account name.
+    #[serde(default)]
+    pub accounts: HashMap<String, AccountBehavior>,
+}
+
+impl Settings {
+    pub fn load(path: &Path) -> Result<Self, ConfigError> {
+        if !path.exists() {
+            return Ok(Settings::default());
+        }
+        let content = fs::read_to_string(path)?;
+        Ok(serde_yaml::from_str(&content)?)
+    }
+
+    pub fn save(&self, path: &Path) -> Result<(), ConfigError> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, serde_yaml::to_string(self)?)?;
+        Ok(())
+    }
+}
+
+// ── Raw accounts.yaml (connection info only) ─────────────────────────────────
+
+/// A single account entry as stored in accounts.yaml.
+/// Contains only connection details; behaviour comes from settings.yaml.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RawAccount {
+    pub name: String,
+    pub server: String,
+    pub port: u16,
+    pub username: String,
+    #[serde(default)]
+    pub ignored_folders: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAccountsFile {
+    accounts: Vec<RawAccount>,
+}
+
+/// Merge a raw account with the app settings to produce a fully-resolved Account.
+fn merge_account(raw: &RawAccount, settings: &Settings) -> Account {
+    let per = settings.accounts.get(&raw.name);
+    let def = &settings.defaults;
+
+    let folder = per
+        .and_then(|a| a.folder_name.as_deref())
+        .unwrap_or(&raw.name);
+
+    let export_directory = settings
+        .export_base_dir
+        .as_ref()
+        .map(|base| PathBuf::from(base).join(folder).to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+
+    Account {
+        name: raw.name.clone(),
+        server: raw.server.clone(),
+        port: raw.port,
+        username: raw.username.clone(),
+        password: None,
+        ignored_folders: raw.ignored_folders.clone(),
+        export_directory,
+        quote_depth: per.and_then(|a| a.quote_depth).or(def.quote_depth).unwrap_or(1),
+        skip_existing: per.and_then(|a| a.skip_existing).or(def.skip_existing).unwrap_or(true),
+        collect_contacts: per.and_then(|a| a.collect_contacts).or(def.collect_contacts).unwrap_or(false),
+        skip_signature_images: per.and_then(|a| a.skip_signature_images).or(def.skip_signature_images).unwrap_or(false),
+        delete_after_export: per.and_then(|a| a.delete_after_export).or(def.delete_after_export).unwrap_or(false),
+    }
 }
 
 #[derive(Error, Debug)]
@@ -48,31 +158,25 @@ pub enum ConfigError {
     ValidationError(String),
 }
 
+/// Fully-resolved account used by the exporter.
+/// Populated by merging accounts.yaml + settings.yaml — never serialised back to disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
     pub name: String,
     pub server: String,
     pub port: u16,
     pub username: String,
-    #[serde(skip_deserializing, default)]
+    #[serde(skip)]
     pub password: Option<String>,
+    /// Computed: `export_base_dir / folder_name`
     pub export_directory: String,
     #[serde(default)]
     pub ignored_folders: Vec<String>,
-    #[serde(default = "default_quote_depth")]
     pub quote_depth: usize,
-    #[serde(default = "default_true")]
     pub skip_existing: bool,
-    #[serde(default)]
     pub collect_contacts: bool,
-    #[serde(default)]
     pub skip_signature_images: bool,
-    #[serde(default)]
     pub delete_after_export: bool,
-}
-
-fn default_quote_depth() -> usize {
-    1
 }
 
 fn default_true() -> bool {
@@ -85,28 +189,33 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load configuration from YAML file and inject passwords from environment.
-    pub fn load(config_path: &Path) -> Result<Self, ConfigError> {
-        if !config_path.exists() {
+    /// Load and merge accounts.yaml + settings.yaml, then inject passwords from env.
+    pub fn load(accounts_path: &Path) -> Result<Self, ConfigError> {
+        if !accounts_path.exists() {
             return Ok(Config { accounts: vec![] });
         }
-        let content = fs::read_to_string(config_path)?;
-        let mut config: Config = serde_yaml::from_str(&content)?;
+
+        let content = fs::read_to_string(accounts_path)?;
+        let raw_file: RawAccountsFile = serde_yaml::from_str(&content)?;
+
+        let settings = Settings::load(&settings_path()).unwrap_or_default();
+
+        let mut accounts: Vec<Account> = raw_file
+            .accounts
+            .iter()
+            .map(|raw| merge_account(raw, &settings))
+            .collect();
 
         // Inject passwords from environment
-        for account in &mut config.accounts {
-            let sanitized_name = account.name.to_uppercase().replace(['@', '.', '-'], "_");
-            let app_password_var = format!("{}_APPLICATION_PASSWORD", sanitized_name);
-            let password_var = format!("{}_PASSWORD", sanitized_name);
-
-            account.password = env::var(&app_password_var)
+        for account in &mut accounts {
+            let sanitized = account.name.to_uppercase().replace(['@', '.', '-'], "_");
+            account.password = env::var(format!("{}_APPLICATION_PASSWORD", sanitized))
                 .ok()
-                .or_else(|| env::var(&password_var).ok());
+                .or_else(|| env::var(format!("{}_PASSWORD", sanitized)).ok());
         }
 
-        // [6] Validate configuration
+        let config = Config { accounts };
         config.validate()?;
-
         Ok(config)
     }
 
@@ -133,7 +242,8 @@ impl Config {
             }
             if account.export_directory.is_empty() {
                 return Err(ConfigError::ValidationError(format!(
-                    "Export directory not configured for account '{}'",
+                    "Export directory not configured for account '{}'. \
+                     Set 'export_base_dir' in settings.yaml or via the tray.",
                     account.name
                 )));
             }

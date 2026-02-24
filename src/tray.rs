@@ -158,10 +158,10 @@ fn create_menu() -> Result<Menu> {
         no_accel.clone(),
     ))?;
 
-    // Open config
+    // Open settings
     menu.append(&MenuItem::with_id(
         menu_ids::OPEN_CONFIG,
-        "Ouvrir config",
+        "Paramètres…",
         true,
         no_accel.clone(),
     ))?;
