@@ -86,11 +86,13 @@ cargo run -- sort --create-config
 
 - **`main.rs`**: CLI entry point using clap
 - **`lib.rs`**: Module exports
-- **`config.rs`**: Configuration loading (accounts.yaml, sort_config.json)
+- **`config.rs`**: Configuration loading and merging (accounts.yaml + settings.yaml → Account)
+  - `RawAccount`, `Settings`, `AccountBehavior`, `Account`, `Config`, `SortConfig`
+  - `app_config_dir()`, `accounts_yaml_path()`, `env_file_path()`, `settings_path()`
 - **`email_export.rs`**: IMAP client and email export logic
   - `ImapExporter`: IMAP connection and folder iteration
   - `export_to_markdown()`: Converts email to Markdown with frontmatter
-  - `analyze_email_type()`: Classifies emails (direct, group, newsletter)
+  - `analyze_email_type()`: Classifies emails (direct, group, newsletter, mailing_list)
   - `ContactsCollector`: Collects and exports contacts to CSV
 - **`fix_yaml.rs`**: YAML frontmatter correction
   - `fix_complex_yaml_tags()`: Removes Python-specific YAML tags
@@ -105,8 +107,14 @@ cargo run -- sort --create-config
   - `decode_imap_utf7()`: Decodes IMAP folder names
 - **`thunderbird.rs`**: Thunderbird profile import [1]
   - `list_profiles()`: Lists available Thunderbird profiles
-  - `extract_accounts()`: Extracts IMAP accounts from prefs.js
-  - `generate_accounts_yaml()`: Generates accounts.yaml from Thunderbird config
+  - `extract_accounts()`: Extracts IMAP accounts from `prefs.js`
+  - `extract_passwords()`: Decrypts passwords via NSS (requires Thunderbird closed)
+  - `generate_accounts_yaml()`: Generates accounts.yaml (connection info only)
+- **`tray.rs`** *(feature `tray`)*: System tray icon and event loop (`tao` + `tray-icon`)
+  - Builds context menu dynamically from configured accounts
+  - Rebuilds menu after import (`ActionResult::Imported`)
+- **`tray_actions.rs`** *(feature `tray`)*: Action handlers for tray menu items
+  - Export, sort, import from Thunderbird, choose export directory, open settings
 
 ### Configuration
 

@@ -8,11 +8,16 @@ Outil Rust pour exporter vos emails IMAP vers des fichiers Markdown avec métado
 # Installer Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Compiler le projet (debug)
-cargo build
-
 # Compiler en mode release (optimisé)
 cargo build --release
+
+# Compiler avec l'icône dans la barre système (optionnel)
+cargo build --release --features tray
+```
+
+**Linux** — dépendances système requises avant de compiler :
+```bash
+sudo apt-get install build-essential pkg-config libssl-dev
 ```
 
 ## Configuration rapide
