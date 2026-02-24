@@ -19,14 +19,23 @@ pub fn get_short_name(email_str: Option<&str>) -> String {
         _ => return "UNK".to_string(),
     };
 
-    // Remove < and > characters
-    let clean = email.replace('<', "").replace('>', "");
-
-    // Extract name part (before @ if email, or full name)
-    let name_part = if clean.contains('@') {
-        clean.split('@').next().unwrap_or(&clean)
+    // Handle "Name <email@domain>" format: extract the display name part
+    let name_str;
+    let name_part = if let Some(angle_pos) = email.find('<') {
+        let name = email[..angle_pos].trim();
+        if name.is_empty() {
+            // No display name, use local part of email
+            name_str = email[angle_pos + 1..].trim_end_matches('>').to_string();
+            name_str.split('@').next().unwrap_or(&name_str)
+        } else {
+            name
+        }
+    } else if email.contains('@') {
+        // Plain email address: use local part
+        email.split('@').next().unwrap_or(email)
     } else {
-        &clean
+        // Plain name
+        email
     };
 
     // Get initials or short name

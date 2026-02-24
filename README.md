@@ -18,13 +18,17 @@ cargo build --release
 ## Configuration rapide
 
 ```bash
-# 1. Importer automatiquement la config depuis Thunderbird (recommandé)
+# 1. Importer automatiquement les comptes depuis Thunderbird (recommandé)
 ./target/release/email-to-markdown import --extract-passwords
 
-# 2. Ou configurer manuellement
-cp config/accounts.yaml.example config/accounts.yaml
-# Éditer config/accounts.yaml, puis créer .env avec les mots de passe
+# 2. Choisir le répertoire d'export (via le tray ou manuellement dans settings.yaml)
+# Voir section Configuration ci-dessous
 ```
+
+> Les fichiers de configuration sont stockés dans le répertoire système :
+> - **Windows** : `%APPDATA%\email-to-markdown\`
+> - **macOS** : `~/Library/Application Support/email-to-markdown/`
+> - **Linux** : `~/.config/email-to-markdown/`
 
 ---
 
@@ -32,7 +36,7 @@ cp config/accounts.yaml.example config/accounts.yaml
 
 ### `import` — Importer depuis Thunderbird
 
-Génère `config/accounts.yaml` à partir des comptes IMAP configurés dans Thunderbird.
+Génère `accounts.yaml` (connexion uniquement) dans le répertoire de config système.
 
 ```
 email-to-markdown import [OPTIONS]
@@ -42,7 +46,7 @@ email-to-markdown import [OPTIONS]
 |--------|-------------|
 | `--list-profiles` | Liste les profils Thunderbird disponibles et quitte |
 | `--profile <CHEMIN>` | Utilise un profil spécifique (chemin absolu) ; sinon détection automatique |
-| `--output <CHEMIN>` | Fichier de sortie (défaut : `config/accounts.yaml`) |
+| `--output <CHEMIN>` | Fichier de sortie (défaut : répertoire de config système) |
 | `--generate-env` | Génère aussi un fichier `.env.template` avec les variables à remplir |
 | `--extract-passwords` | Déchiffre les mots de passe depuis Thunderbird et les écrit dans `.env` (Thunderbird doit être fermé) |
 | `--master-password <MDP>` | Master Password Thunderbird, si vous en avez configuré un |
@@ -83,7 +87,7 @@ email-to-markdown export [OPTIONS]
 |--------|-------------|
 | `--list-accounts` | Liste les comptes configurés dans `accounts.yaml` et quitte |
 | `--account <NOM>` | Exporte uniquement le(s) compte(s) indiqué(s) (séparés par virgule) |
-| `--config <CHEMIN>` | Fichier de configuration (défaut : `config/accounts.yaml`) |
+| `--config <CHEMIN>` | Fichier de configuration (défaut : répertoire de config système) |
 | `--debug` | Active le mode verbeux (sortie IMAP brute) |
 | `--delete-after-export` | Supprime les emails du serveur après export (dangereux !) |
 
@@ -155,7 +159,7 @@ email-to-markdown sort [DOSSIER] [OPTIONS]
 |--------|-------------|
 | `[DOSSIER]` | Dossier contenant les fichiers email Markdown |
 | `--account <NOM>` | Trie les emails d'un compte (lit le dossier depuis `accounts.yaml`) |
-| `--config <CHEMIN>` | Fichier de règles de tri (défaut : `config/sort_config.json`) |
+| `--config <CHEMIN>` | Fichier de règles de tri (défaut : répertoire de config système) |
 | `--report <NOM>` | Nom du fichier rapport de sortie (défaut : `sort_report.json`) |
 | `--verbose` | Affiche les détails des emails classés |
 | `--dry-run` | Analyse sans créer de rapport |
@@ -209,7 +213,12 @@ email-to-markdown tray
 
 ## Configuration
 
-### `config/accounts.yaml`
+La configuration est répartie en trois fichiers dans le répertoire système
+(`%APPDATA%\email-to-markdown\` sur Windows, `~/.config/email-to-markdown/` sur Linux/macOS) :
+
+### `accounts.yaml` — Connexion IMAP
+
+Généré automatiquement par `import`. Contient uniquement les infos de connexion.
 
 ```yaml
 accounts:
@@ -217,20 +226,47 @@ accounts:
     server: "imap.gmail.com"
     port: 993
     username: "votre.email@gmail.com"
-    export_directory: "./exports/gmail"
     ignored_folders:
       - "[Gmail]/Spam"
       - "[Gmail]/Trash"
       - "[Gmail]/All Mail"
       - "[Gmail]/Drafts"
-    quote_depth: 1          # Profondeur max des citations à conserver
-    skip_existing: true     # Ne pas ré-exporter les emails déjà présents
-    collect_contacts: false # Générer un CSV des contacts
-    skip_signature_images: true  # Ignorer les images de signature/logo
-    delete_after_export: false   # Supprimer du serveur après export
+
+  - name: "Outlook"
+    server: "outlook.office365.com"
+    port: 993
+    username: "votre.email@outlook.com"
+    ignored_folders:
+      - Junk
+      - "Deleted Items"
 ```
 
-### `.env`
+### `settings.yaml` — Comportement de l'application
+
+Éditable via **Paramètres…** dans le tray ou directement.
+
+```yaml
+# Répertoire racine — chaque compte crée un sous-dossier automatiquement
+export_base_dir: C:/Users/VotreNom/Documents/Emails
+
+# Comportement par défaut pour tous les comptes
+defaults:
+  quote_depth: 1            # Profondeur max des citations à conserver
+  skip_existing: true       # Ne pas ré-exporter les emails déjà présents
+  collect_contacts: false   # Générer un CSV des contacts
+  skip_signature_images: true  # Ignorer les images de signature/logo
+  delete_after_export: false   # Supprimer du serveur après export
+
+# Surcharges par compte (optionnel)
+# accounts:
+#   Gmail:
+#     folder_name: gmail      # Nom du sous-dossier (défaut : nom du compte)
+#     delete_after_export: false
+#   Outlook:
+#     collect_contacts: true
+```
+
+### `.env` — Mots de passe
 
 ```bash
 # Mot de passe standard

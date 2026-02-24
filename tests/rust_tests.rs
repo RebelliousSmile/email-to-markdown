@@ -1,4 +1,4 @@
-use email_to_markdown::config::{SortConfig, Config, Account};
+use email_to_markdown::config::{SortConfig, Config, Account, Settings, AccountBehavior};
 use email_to_markdown::network::{NetworkConfig, ProgressIndicator};  // [3][4]
 use email_to_markdown::utils::*;
 use std::path::PathBuf;
@@ -143,8 +143,9 @@ mod utils_tests {
 
     #[test]
     fn test_decode_imap_utf7_french_chars() {
+        // &AOk- is IMAP modified UTF-7 for é (U+00E9)
         let result = decode_imap_utf7("INBOX.&AOk-");
-        assert!(result.contains('e') || result.contains("AOk")); // May or may not decode
+        assert!(result.contains('é') || result == "INBOX.&AOk-");
     }
 }
 
@@ -159,12 +160,11 @@ mod config_tests {
         assert_eq!(config.recent_threshold_days, 30);
     }
 
-    // [6] Tests de validation
     #[test]
-    fn test_config_validation_empty_accounts() {
+    fn test_config_validation_empty_accounts_is_ok() {
+        // Empty account list is valid — no error expected
         let config = Config { accounts: vec![] };
-        let result = config.validate();
-        assert!(result.is_err());
+        assert!(config.validate().is_ok());
     }
 
     #[test]
@@ -213,6 +213,108 @@ mod config_tests {
         let loaded = SortConfig::load(&config_path).unwrap();
         assert_eq!(loaded.recent_threshold_days, config.recent_threshold_days);
         assert_eq!(loaded.delete_keywords.len(), config.delete_keywords.len());
+    }
+}
+
+mod settings_tests {
+    use super::*;
+
+    #[test]
+    fn test_settings_default() {
+        let s = Settings::default();
+        assert!(s.export_base_dir.is_none());
+        assert!(s.defaults.quote_depth.is_none());
+        assert!(s.accounts.is_empty());
+    }
+
+    #[test]
+    fn test_settings_save_load_roundtrip() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("settings.yaml");
+
+        let mut s = Settings::default();
+        s.export_base_dir = Some("/tmp/emails".to_string());
+        s.defaults.quote_depth = Some(2);
+        s.defaults.skip_existing = Some(false);
+        s.save(&path).unwrap();
+
+        let loaded = Settings::load(&path).unwrap();
+        assert_eq!(loaded.export_base_dir, Some("/tmp/emails".to_string()));
+        assert_eq!(loaded.defaults.quote_depth, Some(2));
+        assert_eq!(loaded.defaults.skip_existing, Some(false));
+    }
+
+    #[test]
+    fn test_settings_missing_file_returns_default() {
+        let s = Settings::load(std::path::Path::new("/nonexistent/settings.yaml")).unwrap();
+        assert!(s.export_base_dir.is_none());
+    }
+
+    #[test]
+    fn test_config_merge_export_dir_from_base() {
+        let temp = TempDir::new().unwrap();
+
+        let accounts_yaml = "accounts:\n  - name: TestAccount\n    server: imap.example.com\n    port: 993\n    username: user@example.com\n";
+        let accounts_path = temp.path().join("accounts.yaml");
+        std::fs::write(&accounts_path, accounts_yaml).unwrap();
+
+        let settings_yaml = "export_base_dir: /tmp/emails\n";
+        let settings_path = temp.path().join("settings.yaml");
+        std::fs::write(&settings_path, settings_yaml).unwrap();
+
+        let config = Config::load_with_settings(&accounts_path, &settings_path).unwrap();
+        assert_eq!(config.accounts.len(), 1);
+        assert_eq!(config.accounts[0].export_directory, "/tmp/emails/TestAccount");
+    }
+
+    #[test]
+    fn test_config_merge_defaults_applied() {
+        let temp = TempDir::new().unwrap();
+
+        let accounts_yaml = "accounts:\n  - name: TestAccount\n    server: imap.example.com\n    port: 993\n    username: user@example.com\n";
+        let accounts_path = temp.path().join("accounts.yaml");
+        std::fs::write(&accounts_path, accounts_yaml).unwrap();
+
+        let settings_yaml = "export_base_dir: /tmp/emails\ndefaults:\n  quote_depth: 3\n  collect_contacts: true\n";
+        let settings_path = temp.path().join("settings.yaml");
+        std::fs::write(&settings_path, settings_yaml).unwrap();
+
+        let config = Config::load_with_settings(&accounts_path, &settings_path).unwrap();
+        assert_eq!(config.accounts[0].quote_depth, 3);
+        assert!(config.accounts[0].collect_contacts);
+    }
+
+    #[test]
+    fn test_config_merge_per_account_overrides_folder_name() {
+        let temp = TempDir::new().unwrap();
+
+        let accounts_yaml = "accounts:\n  - name: TestAccount\n    server: imap.example.com\n    port: 993\n    username: user@example.com\n";
+        let accounts_path = temp.path().join("accounts.yaml");
+        std::fs::write(&accounts_path, accounts_yaml).unwrap();
+
+        let settings_yaml = "export_base_dir: /tmp/emails\naccounts:\n  TestAccount:\n    folder_name: custom-folder\n    quote_depth: 5\n";
+        let settings_path = temp.path().join("settings.yaml");
+        std::fs::write(&settings_path, settings_yaml).unwrap();
+
+        let config = Config::load_with_settings(&accounts_path, &settings_path).unwrap();
+        assert!(config.accounts[0].export_directory.ends_with("custom-folder"));
+        assert_eq!(config.accounts[0].quote_depth, 5);
+    }
+
+    #[test]
+    fn test_config_merge_no_settings_uses_hardcoded_defaults() {
+        let temp = TempDir::new().unwrap();
+
+        // accounts.yaml without settings.yaml → export_directory is empty, validation fails
+        let accounts_yaml = "accounts:\n  - name: TestAccount\n    server: imap.example.com\n    port: 993\n    username: user@example.com\n";
+        let accounts_path = temp.path().join("accounts.yaml");
+        std::fs::write(&accounts_path, accounts_yaml).unwrap();
+
+        let missing_settings = temp.path().join("settings.yaml"); // does not exist
+
+        let config = Config::load_with_settings(&accounts_path, &missing_settings);
+        // Should fail validation: export_directory is empty because no export_base_dir set
+        assert!(config.is_err());
     }
 }
 

@@ -1,0 +1,25 @@
+# Email to Markdown — Application settings
+# Copy to %APPDATA%\email-to-markdown\settings.yaml (Windows)
+# or ~/.config/email-to-markdown/settings.yaml (Linux/macOS)
+#
+# Edit via "Paramètres…" in the tray, or directly in this file.
+
+# Root directory — each account creates a sub-folder automatically
+# export_base_dir: C:/Users/YourName/Documents/Emails
+
+# Default behaviour applied to every account
+defaults:
+  quote_depth: 1             # Max citation depth to preserve
+  skip_existing: true        # Skip already-exported emails
+  collect_contacts: false    # Generate a CSV of contacts
+  skip_signature_images: true  # Ignore signature/logo images
+  delete_after_export: false   # Delete from server after export
+
+# Per-account overrides (optional)
+# accounts:
+#   Gmail:
+#     folder_name: gmail        # Custom sub-folder name (default: account name)
+#     delete_after_export: false
+#   Outlook:
+#     collect_contacts: true
+#     quote_depth: 2

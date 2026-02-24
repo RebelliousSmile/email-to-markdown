@@ -189,8 +189,16 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load and merge accounts.yaml + settings.yaml, then inject passwords from env.
+    /// Load accounts from `accounts_path` and settings from the platform default path.
     pub fn load(accounts_path: &Path) -> Result<Self, ConfigError> {
+        Self::load_with_settings(accounts_path, &settings_path())
+    }
+
+    /// Load and merge accounts.yaml + an explicit settings path (useful for tests).
+    pub fn load_with_settings(
+        accounts_path: &Path,
+        settings_file: &Path,
+    ) -> Result<Self, ConfigError> {
         if !accounts_path.exists() {
             return Ok(Config { accounts: vec![] });
         }
@@ -198,7 +206,7 @@ impl Config {
         let content = fs::read_to_string(accounts_path)?;
         let raw_file: RawAccountsFile = serde_yaml::from_str(&content)?;
 
-        let settings = Settings::load(&settings_path()).unwrap_or_default();
+        let settings = Settings::load(settings_file).unwrap_or_default();
 
         let mut accounts: Vec<Account> = raw_file
             .accounts
