@@ -6,6 +6,7 @@
 use std::sync::mpsc;
 
 use anyhow::{Context, Result};
+use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu, accelerator::Accelerator},
@@ -31,18 +32,34 @@ pub fn run_tray() -> Result<()> {
     // Create event loop
     let event_loop = EventLoopBuilder::new().build();
 
-    // Create the tray icon
-    let tray_icon = create_tray_icon()?;
-
     // Channel for receiving action results
     let (result_sender, result_receiver) = mpsc::channel::<ActionResult>();
 
     // Menu event receiver
     let menu_channel = MenuEvent::receiver();
 
+    // Tray icon must be created after event loop on some platforms
+    let mut tray_icon: Option<TrayIcon> = None;
+
     // Run the event loop
-    event_loop.run(move |_event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        match event {
+            Event::NewEvents(StartCause::Init) => {
+                // Create tray icon on init
+                match create_tray_icon() {
+                    Ok(icon) => {
+                        tray_icon = Some(icon);
+                        println!("Tray icon created successfully");
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to create tray icon: {}", e);
+                    }
+                }
+            }
+            _ => {}
+        }
 
         // Handle menu events
         if let Ok(event) = menu_channel.try_recv() {
@@ -236,43 +253,22 @@ fn load_icon_from_file(path: &str) -> Result<tray_icon::Icon> {
         .context("Failed to create icon from image")
 }
 
-/// Create a simple default icon (a colored square).
+/// Create a simple default icon (solid blue square - maximum visibility).
 fn create_default_icon() -> Result<tray_icon::Icon> {
-    // Create a simple 32x32 icon with an email-like appearance
-    let size = 32u32;
+    // Create a 16x16 icon (standard Windows tray icon size)
+    let size = 16u32;
     let mut rgba = vec![0u8; (size * size * 4) as usize];
 
-    // Fill with a blue color (email icon style)
-    for y in 0..size {
-        for x in 0..size {
-            let idx = ((y * size + x) * 4) as usize;
-
-            // Create a simple envelope shape
-            let is_border = x < 2 || x >= size - 2 || y < 2 || y >= size - 2;
-            let is_envelope_top = y < size / 3 && (x as i32 - size as i32 / 2).abs() < (y as i32 + 2);
-            let is_inner = !is_border && y >= 4 && y < size - 4 && x >= 4 && x < size - 4;
-
-            if is_border || is_envelope_top {
-                // Blue border
-                rgba[idx] = 52;      // R
-                rgba[idx + 1] = 120; // G
-                rgba[idx + 2] = 246; // B
-                rgba[idx + 3] = 255; // A
-            } else if is_inner {
-                // White interior
-                rgba[idx] = 255;     // R
-                rgba[idx + 1] = 255; // G
-                rgba[idx + 2] = 255; // B
-                rgba[idx + 3] = 255; // A
-            } else {
-                // Blue fill
-                rgba[idx] = 52;      // R
-                rgba[idx + 1] = 120; // G
-                rgba[idx + 2] = 246; // B
-                rgba[idx + 3] = 255; // A
-            }
-        }
+    // Fill with solid blue color - no transparency
+    for i in 0..(size * size) as usize {
+        let idx = i * 4;
+        rgba[idx] = 30;      // R
+        rgba[idx + 1] = 136; // G
+        rgba[idx + 2] = 229; // B (Material Blue)
+        rgba[idx + 3] = 255; // A (fully opaque)
     }
+
+    println!("Creating icon: {}x{}, {} bytes", size, size, rgba.len());
 
     tray_icon::Icon::from_rgba(rgba, size, size).context("Failed to create default icon")
 }

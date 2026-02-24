@@ -63,9 +63,12 @@ pub fn list_profiles() -> Result<Vec<ThunderbirdProfile>> {
 }
 
 /// Parse profiles.ini file
-fn parse_profiles_ini(ini_path: &Path, base_dir: &Path) -> Result<Vec<ThunderbirdProfile>> {
+fn parse_profiles_ini(ini_path: &Path, _base_dir: &Path) -> Result<Vec<ThunderbirdProfile>> {
     let content = fs::read_to_string(ini_path)
         .context("Failed to read profiles.ini")?;
+
+    // The base directory for relative paths is the Thunderbird folder (parent of profiles.ini)
+    let thunderbird_dir = ini_path.parent().unwrap_or(Path::new("."));
 
     let mut profiles = Vec::new();
     let mut current_profile: Option<HashMap<String, String>> = None;
@@ -76,7 +79,7 @@ fn parse_profiles_ini(ini_path: &Path, base_dir: &Path) -> Result<Vec<Thunderbir
         if line.starts_with('[') && line.ends_with(']') {
             // Save previous profile
             if let Some(profile) = current_profile.take() {
-                if let Some(p) = build_profile_from_map(&profile, base_dir) {
+                if let Some(p) = build_profile_from_map(&profile, thunderbird_dir) {
                     profiles.push(p);
                 }
             }
@@ -94,7 +97,7 @@ fn parse_profiles_ini(ini_path: &Path, base_dir: &Path) -> Result<Vec<Thunderbir
 
     // Don't forget the last profile
     if let Some(profile) = current_profile {
-        if let Some(p) = build_profile_from_map(&profile, base_dir) {
+        if let Some(p) = build_profile_from_map(&profile, thunderbird_dir) {
             profiles.push(p);
         }
     }
