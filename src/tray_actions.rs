@@ -8,6 +8,7 @@ use std::sync::mpsc::Sender;
 use std::thread;
 
 use anyhow::{Context, Result};
+use rfd;
 
 use crate::config::{Config, SortConfig};
 use crate::email_export::ImapExporter;
@@ -122,10 +123,21 @@ fn run_sort(account_name: &str) -> Result<String> {
 
 /// Import accounts from Thunderbird.
 ///
-/// Runs in a separate thread to avoid blocking the UI.
+/// Shows a Yes/No dialog asking whether to also extract passwords,
+/// then runs the import in a background thread.
 pub fn action_import_thunderbird(result_sender: Sender<ActionResult>) {
+    let extract_passwords = rfd::MessageDialog::new()
+        .set_title("Import Thunderbird")
+        .set_description(
+            "Extraire les mots de passe depuis Thunderbird ?\n\
+             (Thunderbird doit être fermé pendant l'opération)",
+        )
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes;
+
     thread::spawn(move || {
-        let result = run_import_thunderbird();
+        let result = run_import_thunderbird(extract_passwords);
         let action_result = match result {
             Ok(message) => ActionResult::Imported(message),
             Err(e) => ActionResult::Error(format!("Import error: {}", e)),
@@ -134,13 +146,17 @@ pub fn action_import_thunderbird(result_sender: Sender<ActionResult>) {
     });
 }
 
-fn run_import_thunderbird() -> Result<String> {
+fn run_import_thunderbird(extract_passwords: bool) -> Result<String> {
     let profiles = thunderbird::list_profiles().context("Could not find Thunderbird profiles")?;
 
+    // Same logic as CLI: prefer default profile that has prefs.js
+    let has_prefs = |p: &thunderbird::ThunderbirdProfile| p.path.join("prefs.js").exists();
     let profile = profiles
-        .into_iter()
-        .find(|p| p.is_default)
-        .context("No default Thunderbird profile found")?;
+        .iter()
+        .find(|p| p.is_default && has_prefs(p))
+        .or_else(|| profiles.iter().find(|p| has_prefs(p)))
+        .cloned()
+        .context("No usable Thunderbird profiles found (no prefs.js)")?;
 
     let accounts = thunderbird::extract_accounts(&profile)
         .context("Failed to extract accounts from Thunderbird")?;
@@ -158,10 +174,23 @@ fn run_import_thunderbird() -> Result<String> {
 
     std::fs::write(&output_path, &yaml_content)?;
 
-    Ok(format!(
-        "Imported {} account(s) to config/accounts.yaml",
-        accounts.len()
-    ))
+    let mut message = format!("Imported {} account(s) to config/accounts.yaml", accounts.len());
+
+    if extract_passwords {
+        match thunderbird::extract_passwords(&profile, None) {
+            Ok(passwords) if !passwords.is_empty() => {
+                let env_path = PathBuf::from(".env");
+                match thunderbird::write_passwords_to_env(&accounts, &passwords, &env_path) {
+                    Ok(n) => message.push_str(&format!("\n{} mot(s) de passe écrits dans .env", n)),
+                    Err(e) => message.push_str(&format!("\nImpossible d'écrire .env : {}", e)),
+                }
+            }
+            Ok(_) => message.push_str("\nAucun mot de passe trouvé dans Thunderbird"),
+            Err(e) => message.push_str(&format!("\nExtraction des mots de passe échouée : {}", e)),
+        }
+    }
+
+    Ok(message)
 }
 
 /// Open the documentation (README.md) in the default viewer.
