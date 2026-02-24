@@ -126,6 +126,23 @@
 
 ---
 
+## "Correction du YAML hérité"
+
+**As a** utilisateur migrant depuis l'ancienne version Python
+**I want** corriger automatiquement les fichiers Markdown mal formés
+**So that** mes anciens exports restent lisibles et compatibles avec les outils YAML standards
+
+- Acceptance Criteria:
+  - [x] Given: des fichiers Markdown exportes par l'ancienne version Python contiennent des tags YAML non-standards (`!!python/object:`, ancres `&anchor`, etc.)
+  - [x] When: je lance `email-to-markdown fix ./exports/gmail`
+  - [x] Then: le programme analyse les fichiers sans les modifier (dry-run par defaut)
+  - [x] And: un rapport indique combien de fichiers seraient corriges
+  - [x] When: je relance avec `--apply`
+  - [x] Then: les fichiers sont corriges en place
+  - [x] And: les tags Python-specifiques sont supprimes du frontmatter YAML
+
+---
+
 ## "Gestion des listes noires"
 
 **As a** utilisateur

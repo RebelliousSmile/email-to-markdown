@@ -80,6 +80,15 @@ cargo run -- sort --list-accounts
 cargo run -- sort --create-config
 ```
 
+### System tray (optional)
+```bash
+# Build with tray support
+cargo build --release --features tray
+
+# Run the tray
+cargo run --features tray -- tray
+```
+
 ## Architecture
 
 ### Core Modules (src/)

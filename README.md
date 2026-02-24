@@ -203,7 +203,7 @@ email-to-markdown sort --list-accounts
 
 ### `tray` — Interface dans la barre système *(optionnel)*
 
-Lance l'application en tant qu'icône dans la barre système (Windows/macOS/Linux).
+Lance l'application en tant qu'icône enveloppe dans la barre système (Windows/macOS/Linux).
 
 > Nécessite la compilation avec la feature `tray` :
 > ```bash
@@ -213,6 +213,21 @@ Lance l'application en tant qu'icône dans la barre système (Windows/macOS/Linu
 ```bash
 email-to-markdown tray
 ```
+
+Au premier lancement sans comptes configurés, les sous-menus **Export** et **Tri** sont désactivés. Le menu contextuel propose :
+
+| Entrée | Action |
+|--------|--------|
+| Export compte › *Nom* | Exporte les emails du compte via IMAP |
+| Trier emails › *Nom* | Génère `sort_report.json` pour le compte |
+| Import Thunderbird | Importe comptes + mots de passe (dialog Oui/Non/Annuler) |
+| Choisir répertoire d'export… | Sélecteur de dossier → met à jour `settings.yaml` |
+| Paramètres… | Ouvre `settings.yaml` dans l'éditeur par défaut |
+| Documentation | Ouvre `README.md` |
+| Quitter | Ferme l'application |
+
+Après chaque action, une notification modale indique le résultat (succès ou erreur).
+Après un import, le menu est reconstruit automatiquement pour refléter les nouveaux comptes.
 
 ---
 
