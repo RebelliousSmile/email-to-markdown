@@ -20,6 +20,11 @@ cargo build --release --features tray
 sudo apt-get install build-essential pkg-config libssl-dev
 ```
 
+Pour l'extraction des mots de passe Thunderbird sur Linux (`--extract-passwords`), installez aussi :
+```bash
+sudo apt-get install libnss3-dev
+```
+
 ## Configuration rapide
 
 ```bash
