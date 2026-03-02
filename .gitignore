@@ -32,8 +32,25 @@ config/accounts.yaml
 tests/test_emails/sort_report.json
 
 # Legacy and large directories
+.archive/
 archive/
 
-# AIDD
+# <AIDD>
+.mcp.json
+aidd*
 aidd/
+docs/
 worktrees/
+.aidd/
+.vscode/
+# Ignore tout dans .claude/ sauf commands/custom/
+.claude/*
+!.claude/commands/
+.claude/commands/*
+!.claude/commands/custom/
+.github/
+CLAUDE.md
+AGENTS.md
+CONTRIBUTING.md
+migrate-docs.prompt.md
+# </AIDD>
