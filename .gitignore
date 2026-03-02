@@ -34,6 +34,21 @@ tests/test_emails/sort_report.json
 # Legacy and large directories
 archive/
 
-# AIDD
+
+# <AIDD>
+.mcp.json
+aidd*
 aidd/
+docs/
 worktrees/
+.aidd/
+.vscode/
+.claude/
+.github/**
+!.github/workflows/
+!.github/workflows/*.yml
+CLAUDE.md
+AGENTS.md
+CONTRIBUTING.md
+migrate-docs.prompt.md
+# </AIDD>
