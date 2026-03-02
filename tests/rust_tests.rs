@@ -320,6 +320,136 @@ mod settings_tests {
 
 mod email_export_tests {
     use email_to_markdown::email_export::*;
+    use email_to_markdown::config::Account;
+    use tempfile::TempDir;
+
+    /// Build a minimal Account suitable for unit tests.
+    fn test_account(export_dir: &str, skip_existing: bool) -> Account {
+        Account {
+            name: "TestAccount".to_string(),
+            server: "imap.example.com".to_string(),
+            port: 993,
+            username: "user@example.com".to_string(),
+            password: None,
+            export_directory: export_dir.to_string(),
+            ignored_folders: vec![],
+            quote_depth: 1,
+            skip_existing,
+            collect_contacts: false,
+            skip_signature_images: false,
+            delete_after_export: false,
+        }
+    }
+
+    #[test]
+    fn test_export_filename_format() {
+        // Verify that export_to_markdown produces a file whose name follows
+        // the "email_YYYY-MM-DD_SENDER_to_RECIPIENT.md" pattern.
+        let temp = TempDir::new().unwrap();
+        let export_dir = temp.path().to_str().unwrap();
+
+        // Raw email with a known date (RFC 2822), sender, and recipient.
+        let raw_email =
+            b"From: John Doe <john@example.com>\r\nTo: Jane <jane@test.com>\r\nDate: Mon, 15 Jan 2024 10:00:00 +0000\r\nSubject: Hello World\r\n\r\nTest body";
+
+        let account = test_account(export_dir, false);
+
+        let result = export_to_markdown(
+            raw_email,
+            temp.path(),
+            temp.path(),
+            vec![],
+            &account,
+            None,
+            false,
+        );
+
+        let filepath = result.unwrap().unwrap();
+        let filename = filepath.file_name().unwrap().to_string_lossy();
+
+        // The filename must start with "email_2024-01-15_JD_to_JAN" and end with ".md".
+        // get_short_name("John Doe <john@example.com>") = "JD"  (multi-word display name)
+        // get_short_name("Jane <jane@test.com>")        = "JAN" (single-word, first 3 chars)
+        assert!(
+            filename.starts_with("email_2024-01-15_JD_to_JAN"),
+            "Unexpected filename: {}",
+            filename
+        );
+        assert!(filename.ends_with(".md"), "Unexpected extension: {}", filename);
+    }
+
+    #[test]
+    fn test_export_skip_existing() {
+        // Verify that email_already_exported detects a pre-existing file whose
+        // content contains the subject hash, and that export_to_markdown returns
+        // Ok(None) when skip_existing is true.
+        //
+        // Short names are derived by get_short_name:
+        //   "John Doe <john@example.com>" -> "JD"  (multi-word display name)
+        //   "Jane <jane@test.com>"        -> "JAN" (single-word display name, first 3 chars)
+        let temp = TempDir::new().unwrap();
+
+        let date_str = "2024-01-15";
+        let sender_short = "JD";
+        let recipient_short = "JAN";
+        let subject = "Hello Skip";
+        let subject_hash = email_to_markdown::utils::hash_md5_prefix(subject, 6);
+
+        // Pre-create a file whose name matches the glob pattern
+        // "email_2024-01-15_JD*to_JAN*.md" and whose content contains subject_hash.
+        let existing_name = format!(
+            "email_{}_{}_{}_to_{}.md",
+            date_str, sender_short, subject_hash, recipient_short
+        );
+        let existing_path = temp.path().join(&existing_name);
+        std::fs::write(&existing_path, format!("subject_hash: {}\n", subject_hash)).unwrap();
+
+        // email_already_exported should detect the pre-existing file.
+        assert!(
+            email_already_exported(date_str, sender_short, recipient_short, &subject_hash, temp.path()),
+            "expected pre-existing file to be detected"
+        );
+
+        // export_to_markdown with skip_existing=true must return Ok(None).
+        let raw_email = format!(
+            "From: John Doe <john@example.com>\r\nTo: Jane <jane@test.com>\r\nDate: Mon, 15 Jan 2024 10:00:00 +0000\r\nSubject: {}\r\n\r\nTest body",
+            subject
+        );
+        let account = test_account(temp.path().to_str().unwrap(), true);
+
+        let result = export_to_markdown(
+            raw_email.as_bytes(),
+            temp.path(),
+            temp.path(),
+            vec![],
+            &account,
+            None,
+            false,
+        );
+
+        assert!(result.unwrap().is_none(), "export should be skipped for existing file");
+    }
+
+    #[test]
+    fn test_contacts_csv_type_field() {
+        // Verify that generate_csv writes one row per contact and that each
+        // type label (Direct, Group, Newsletter, Mailing List) appears in the output.
+        let temp = TempDir::new().unwrap();
+        let mut collector = ContactsCollector::new();
+
+        collector.add(&EmailType::Direct, "direct@example.com".to_string());
+        collector.add(&EmailType::Group, "group@example.com".to_string());
+        collector.add(&EmailType::Newsletter, "news@example.com".to_string());
+        collector.add(&EmailType::MailingList, "list@example.com".to_string());
+
+        let csv_path = collector.generate_csv(temp.path(), "TestAccount").unwrap();
+        let content = std::fs::read_to_string(&csv_path).unwrap();
+
+        assert!(content.contains("Direct"), "CSV missing 'Direct' type");
+        assert!(content.contains("Group"), "CSV missing 'Group' type");
+        assert!(content.contains("Newsletter"), "CSV missing 'Newsletter' type");
+        assert!(content.contains("Mailing List"), "CSV missing 'Mailing List' type");
+    }
 
     #[test]
     fn test_analyze_email_type_direct() {
@@ -370,6 +500,7 @@ mod email_export_tests {
 
 mod fix_yaml_tests {
     use email_to_markdown::fix_yaml::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_fix_complex_yaml_tags_python_object() {
@@ -409,12 +540,29 @@ mod fix_yaml_tests {
         let result = extract_frontmatter(content);
         assert!(result.is_none());
     }
+
+    #[test]
+    fn test_fix_dry_run_no_modification() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("email_test.md");
+
+        let original_content = "---\nsubject: !!python/object:email.header.Header My Subject\nfrom: sender@example.com\n---\n\nEmail body";
+        std::fs::write(&file_path, original_content).unwrap();
+
+        let stats = scan_and_fix_directory(temp_dir.path(), true).unwrap();
+
+        let content_after = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content_after, original_content);
+        assert!(stats.files_fixed > 0);
+    }
 }
 
 mod sort_emails_tests {
     use email_to_markdown::sort_emails::*;
     use email_to_markdown::config::SortConfig;
     use std::path::PathBuf;
+    use tempfile::TempDir;
+    use chrono::Utc;
 
     #[test]
     fn test_category_display() {
@@ -437,6 +585,128 @@ mod sort_emails_tests {
 
         let stats = sorter.stats();
         assert_eq!(stats.total_emails, 0);
+    }
+
+    #[test]
+    fn test_sort_blacklist_sender_delete() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("email_blacklist_sender.md");
+
+        // Write a minimal valid markdown email with a blacklisted sender
+        let content = "---\nfrom: spam@example.com\nsubject: Hello\ndate: 2024-01-15\n---\n\nThis is a regular body with enough content to not be skipped by the sorter.";
+        std::fs::write(&file_path, content).unwrap();
+
+        let mut config = SortConfig::default();
+        config.delete_keywords = vec![];
+        config.keep_keywords = vec![];
+        config.delete_senders = vec!["spam@example.com".to_string()];
+
+        let sorter = EmailSorter::new(temp_dir.path().to_path_buf(), config);
+        let result = sorter.analyze_email_file(&file_path).unwrap().unwrap();
+
+        assert_eq!(result.category, Category::Delete);
+    }
+
+    #[test]
+    fn test_sort_blacklist_keyword_delete() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("email_blacklist_keyword.md");
+
+        // Write a minimal valid markdown email whose subject contains a delete keyword
+        let content = "---\nfrom: sender@example.com\nsubject: promo offer for you\ndate: 2024-01-15\n---\n\nThis is a regular body with enough content to not be skipped by the sorter.";
+        std::fs::write(&file_path, content).unwrap();
+
+        let mut config = SortConfig::default();
+        config.delete_keywords = vec!["promo".to_string()];
+        config.keep_keywords = vec![];
+        config.delete_senders = vec![];
+
+        let sorter = EmailSorter::new(temp_dir.path().to_path_buf(), config);
+        let result = sorter.analyze_email_file(&file_path).unwrap().unwrap();
+
+        assert_eq!(result.category, Category::Delete);
+    }
+
+    #[test]
+    fn test_sort_email_type_newsletter_score() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("email_newsletter.md");
+
+        // Subject contains "newsletter" which sets email_type to Newsletter
+        let content = "---\nfrom: news@example.com\nsubject: Weekly Newsletter\ndate: 2024-01-15\n---\n\nThis is a regular body with enough content to not be skipped by the sorter.";
+        std::fs::write(&file_path, content).unwrap();
+
+        let mut config = SortConfig::default();
+        config.delete_keywords = vec![];
+        config.keep_keywords = vec![];
+
+        let sorter = EmailSorter::new(temp_dir.path().to_path_buf(), config);
+        let result = sorter.analyze_email_file(&file_path).unwrap().unwrap();
+
+        // Newsletter type carries a negative weight (-2) and is a delete indicator
+        assert_eq!(result.email_type, EmailSortType::Newsletter);
+        assert!(result.score < 0);
+    }
+
+    #[test]
+    fn test_sort_age_old_email_delete() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("email_old.md");
+
+        // Use a date 400 days in the past (well beyond the default 365-day old threshold)
+        // Pair with a blacklisted sender to ensure delete_indicators fires
+        let old_date = (chrono::Utc::now() - chrono::Duration::days(400))
+            .format("%Y-%m-%d")
+            .to_string();
+        let content = format!(
+            "---\nfrom: spam@example.com\nsubject: Old message\ndate: {}\n---\n\nThis is a regular body with enough content to not be skipped by the sorter.",
+            old_date
+        );
+        std::fs::write(&file_path, content).unwrap();
+
+        let mut config = SortConfig::default();
+        config.delete_keywords = vec![];
+        config.keep_keywords = vec![];
+        config.delete_senders = vec!["spam@example.com".to_string()];
+        config.old_threshold_days = 30;
+
+        let sorter = EmailSorter::new(temp_dir.path().to_path_buf(), config);
+        let result = sorter.analyze_email_file(&file_path).unwrap().unwrap();
+
+        assert_eq!(result.category, Category::Delete);
+        assert!(result.age_days.unwrap() >= 30);
+    }
+
+    #[test]
+    fn test_sort_report_categories() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // File 1: delete signal — blacklisted sender
+        let delete_content = "---\nfrom: spam@example.com\nsubject: Hello\ndate: 2024-01-15\n---\n\nThis is a regular body with enough content to not be skipped by the sorter.";
+        std::fs::write(temp_dir.path().join("email_delete.md"), delete_content).unwrap();
+
+        // File 2: keep signal — subject contains a keep keyword
+        let keep_content = "---\nfrom: lawyer@firm.com\nsubject: Contract review required\ndate: 2024-01-15\n---\n\nThis is a regular body with enough content to not be skipped by the sorter.";
+        std::fs::write(temp_dir.path().join("email_keep.md"), keep_content).unwrap();
+
+        // File 3: summarize signal — plain direct email with no special keywords
+        let summarize_content = "---\nfrom: colleague@work.com\nsubject: Meeting tomorrow\ndate: 2024-01-15\n---\n\nThis is a regular body with enough content to not be skipped by the sorter.";
+        std::fs::write(temp_dir.path().join("email_summarize.md"), summarize_content).unwrap();
+
+        let mut config = SortConfig::default();
+        config.delete_keywords = vec![];
+        config.keep_keywords = vec!["contract".to_string()];
+        config.delete_senders = vec!["spam@example.com".to_string()];
+
+        let mut sorter = EmailSorter::new(temp_dir.path().to_path_buf(), config);
+        sorter.sort_emails().unwrap();
+
+        let report = sorter.generate_report();
+        let report_json = serde_json::to_string(&report).unwrap();
+
+        assert!(report_json.contains("\"delete\""));
+        assert!(report_json.contains("\"summarize\""));
+        assert!(report_json.contains("\"keep\""));
     }
 }
 
