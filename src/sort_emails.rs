@@ -430,7 +430,7 @@ impl EmailSorter {
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.path().extension().map_or(false, |ext| ext == "md")
+                e.path().extension().is_some_and(|ext| ext == "md")
                     && !e.path().to_string_lossy().contains("attachments")
             })
             .map(|e| e.path().to_path_buf())
@@ -464,7 +464,7 @@ impl EmailSorter {
 
                 self.categories
                     .entry(category)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(email_data);
             }
         }

@@ -37,18 +37,19 @@ pub fn fix_complex_yaml_tags(content: &str) -> String {
     let re_subject = Regex::new(r"(?s)subject:\s*!!python/object:.*?_chunks:\s*\[(.*?)\]").unwrap();
     if let Some(caps) = re_subject.captures(&fixed) {
         let chunks = caps.get(1).map_or("", |m| m.as_str());
-        // Extract the actual subject text from chunks
-        let re_text = Regex::new(r#"-\s*(['"])(.*?)\1"#).unwrap();
-        if let Some(text_match) = re_text.captures(chunks) {
-            let subject_text = text_match.get(2).map_or("Unknown", |m| m.as_str());
-            fixed = re_subject
-                .replace_all(&fixed, format!("subject: \"{}\"", subject_text))
-                .to_string();
+        // Extract the actual subject text from chunks (try double-quoted then single-quoted)
+        let re_text_double = Regex::new(r#"-\s*"(.*?)""#).unwrap();
+        let re_text_single = Regex::new(r"-\s*'(.*?)'").unwrap();
+        let subject_text: String = if let Some(text_match) = re_text_double.captures(chunks) {
+            text_match.get(1).map_or_else(|| "Unknown".to_string(), |m| m.as_str().to_string())
+        } else if let Some(text_match) = re_text_single.captures(chunks) {
+            text_match.get(1).map_or_else(|| "Unknown".to_string(), |m| m.as_str().to_string())
         } else {
-            fixed = re_subject
-                .replace_all(&fixed, "subject: \"Unknown\"")
-                .to_string();
-        }
+            "Unknown".to_string()
+        };
+        fixed = re_subject
+            .replace_all(&fixed, format!("subject: \"{}\"", subject_text))
+            .to_string();
     }
 
     // Remove any remaining charset objects
@@ -169,18 +170,23 @@ fn create_simple_frontmatter(content: &str) -> serde_yaml::Value {
         }
     }
 
-    // Try to extract subject
-    let re_subject = Regex::new(r#"subject:.*?(['"])(.*?)\1"#).ok();
-    let subject = if let Some(re) = re_subject {
+    // Try to extract subject (try double-quoted then single-quoted)
+    let re_subject_double = Regex::new(r#"subject:.*?"(.*?)""#).ok();
+    let re_subject_single = Regex::new(r"subject:.*?'(.*?)'").ok();
+    let subject: String = if let Some(re) = re_subject_double {
         re.captures(content)
-            .and_then(|caps| caps.get(2))
-            .map_or("Unknown", |m| m.as_str())
+            .and_then(|caps| caps.get(1))
+            .map_or_else(|| "Unknown".to_string(), |m| m.as_str().to_string())
+    } else if let Some(re) = re_subject_single {
+        re.captures(content)
+            .and_then(|caps| caps.get(1))
+            .map_or_else(|| "Unknown".to_string(), |m| m.as_str().to_string())
     } else {
-        "Unknown"
+        "Unknown".to_string()
     };
     frontmatter.insert(
         serde_yaml::Value::String("subject".to_string()),
-        serde_yaml::Value::String(subject.to_string()),
+        serde_yaml::Value::String(subject),
     );
 
     // Add empty tags and attachments
@@ -207,7 +213,7 @@ pub fn scan_and_fix_directory(directory: &Path, dry_run: bool) -> Result<FixStat
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.path().extension().map_or(false, |ext| ext == "md")
+                e.path().extension().is_some_and(|ext| ext == "md")
                     && !e.path().to_string_lossy().contains("attachments")
             })
             .map(|e| e.path().to_path_buf())

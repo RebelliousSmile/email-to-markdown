@@ -225,8 +225,7 @@ pub fn email_already_exported(
 fn parse_email_date(date_str: &str) -> Option<DateTime<FixedOffset>> {
     mailparse::dateparse(date_str)
         .ok()
-        .map(|ts| DateTime::from_timestamp(ts, 0))
-        .flatten()
+        .and_then(|ts| DateTime::from_timestamp(ts, 0))
         .map(|dt| dt.with_timezone(&FixedOffset::east_opt(0).unwrap()))
 }
 
@@ -639,7 +638,7 @@ impl ImapExporter {
         let mut progress = ProgressIndicator::new(folder_name, total_messages);
         let mut stats = ExportStats::default();
 
-        for (_idx, uid) in uids_vec.into_iter().enumerate() {
+        for uid in uids_vec.into_iter() {
             // [4] Retry logic for fetch
             let fetch_result = with_retry(&self.network_config, "fetch", || {
                 session.fetch(uid.to_string(), "RFC822")

@@ -346,10 +346,9 @@ pub fn is_signature_image(
 
     if common_image_extensions.iter().any(|ext| filename_lower.ends_with(ext))
         && payload_size < 100 * 1024
+        && generic_names.iter().any(|name| filename_lower.starts_with(name))
     {
-        if generic_names.iter().any(|name| filename_lower.starts_with(name)) {
-            return true;
-        }
+        return true;
     }
 
     false
