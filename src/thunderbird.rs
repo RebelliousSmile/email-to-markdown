@@ -299,7 +299,7 @@ pub fn generate_env_template(accounts: &[Account]) -> String {
     env.push_str("# For Gmail with 2FA, use App Password\n\n");
 
     for account in accounts {
-        let env_var = account.name.to_uppercase().replace(' ', "_").replace('-', "_");
+        let env_var = account.name.to_uppercase().replace([' ', '-'], "_");
         env.push_str(&format!("{}_PASSWORD=your_password\n", env_var));
         // Also add APPLICATION_PASSWORD variant for Gmail-like accounts
         if account.server.contains("gmail") {
@@ -349,14 +349,17 @@ struct LoginEntry {
 pub fn find_nss_library_path(_profile: &ThunderbirdProfile) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
+        let program_files = env::var("ProgramFiles")
+            .unwrap_or_else(|_| r"C:\Program Files".to_string());
+        let program_files_x86 = env::var("ProgramFiles(x86)")
+            .unwrap_or_else(|_| r"C:\Program Files (x86)".to_string());
         let candidates = [
-            r"C:\Program Files\Mozilla Thunderbird\nss3.dll",
-            r"C:\Program Files (x86)\Mozilla Thunderbird\nss3.dll",
+            PathBuf::from(&program_files).join("Mozilla Thunderbird").join("nss3.dll"),
+            PathBuf::from(&program_files_x86).join("Mozilla Thunderbird").join("nss3.dll"),
         ];
-        for path in &candidates {
-            let p = PathBuf::from(path);
+        for p in &candidates {
             if p.exists() {
-                return Some(p);
+                return Some(p.clone());
             }
         }
         None
@@ -629,8 +632,7 @@ pub fn write_passwords_to_env(
         let env_key = account
             .name
             .to_uppercase()
-            .replace(' ', "_")
-            .replace('-', "_");
+            .replace([' ', '-'], "_");
         let env_line = format!("{}={}", env_key, pw.password);
         let key_prefix = format!("{}=", env_key);
 
